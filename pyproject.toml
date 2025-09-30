@@ -1,0 +1,17 @@
+[project]
+name = "fbx-analyzer"
+version = "0.1.0"
+description = "Toolkit for inspecting FBX files with focus on skeleton data."
+authors = [
+  { name = "Your Name" }
+]
+requires-python = ">=3.9"
+dependencies = [
+  "typing-extensions"
+]
+
+[project.optional-dependencies]
+fbx = ["fbx-sdk" ]
+
+[project.urls]
+Homepage = "https://example.com/fbx-analyzer"
