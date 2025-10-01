@@ -162,6 +162,12 @@ def _apply_node_attribute(scene, node, attr_type: str, attr_class: str) -> None:
 
 
 def _apply_node_transform(node, model: SceneNode) -> None:  # type: ignore[valid-type]
-    node.LclTranslation.Set(*model.translation)
-    node.LclRotation.Set(*model.rotation)
-    node.LclScaling.Set(*model.scaling)
+    fbx, _ = sdk.import_fbx_module()
+
+    translation = fbx.FbxDouble3(*model.translation)
+    rotation = fbx.FbxDouble3(*model.rotation)
+    scaling = fbx.FbxDouble3(*model.scaling)
+
+    node.LclTranslation.Set(translation)
+    node.LclRotation.Set(rotation)
+    node.LclScaling.Set(scaling)
