@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 
 from ..core import FBXAnalyzer
 from ..core.exceptions import FBXLoadError, FBXSDKNotAvailableError, FBXSaveError
@@ -190,6 +190,10 @@ class DocumentPane:
         default_new_type = "LimbNode" if "LimbNode" in self._attribute_options else default_attribute
         self._new_node_name = tk.StringVar(value="")
         self._new_node_attribute = tk.StringVar(value=default_new_type)
+        self._node_name_edit = tk.StringVar(value="")
+        self._translation_edit = tk.StringVar(value="")
+        self._rotation_edit = tk.StringVar(value="")
+        self._scaling_edit = tk.StringVar(value="")
 
         main_pane = ttk.Panedwindow(container, orient=tk.HORIZONTAL)
         main_pane.pack(fill=tk.BOTH, expand=True)
@@ -271,12 +275,44 @@ class DocumentPane:
             row=0, column=2, padx=(6, 0)
         )
 
-        ttk.Label(edit_frame, text="New Node Name:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
-        ttk.Entry(edit_frame, textvariable=self._new_node_name).grid(
-            row=1, column=1, columnspan=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
+        ttk.Label(edit_frame, text="Rename Node:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Entry(edit_frame, textvariable=self._node_name_edit).grid(
+            row=1, column=1, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
+        )
+        ttk.Button(edit_frame, text="Apply Name", command=self._rename_selected_node).grid(
+            row=1, column=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
         )
 
-        ttk.Label(edit_frame, text="New Node Type:").grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(edit_frame, text="Translation (x, y, z):").grid(row=2, column=0, sticky=tk.W)
+        ttk.Entry(edit_frame, textvariable=self._translation_edit).grid(
+            row=2, column=1, sticky=tk.EW, padx=(6, 0)
+        )
+        ttk.Button(edit_frame, text="Apply Translation", command=lambda: self._apply_transform_edit("translation")).grid(
+            row=2, column=2, sticky=tk.EW, padx=(6, 0)
+        )
+
+        ttk.Label(edit_frame, text="Rotation (x, y, z):").grid(row=3, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Entry(edit_frame, textvariable=self._rotation_edit).grid(
+            row=3, column=1, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
+        )
+        ttk.Button(edit_frame, text="Apply Rotation", command=lambda: self._apply_transform_edit("rotation")).grid(
+            row=3, column=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
+        )
+
+        ttk.Label(edit_frame, text="Scaling (x, y, z):").grid(row=4, column=0, sticky=tk.W)
+        ttk.Entry(edit_frame, textvariable=self._scaling_edit).grid(
+            row=4, column=1, sticky=tk.EW, padx=(6, 0)
+        )
+        ttk.Button(edit_frame, text="Apply Scaling", command=lambda: self._apply_transform_edit("scaling")).grid(
+            row=4, column=2, sticky=tk.EW, padx=(6, 0)
+        )
+
+        ttk.Label(edit_frame, text="New Node Name:").grid(row=5, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Entry(edit_frame, textvariable=self._new_node_name).grid(
+            row=5, column=1, columnspan=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
+        )
+
+        ttk.Label(edit_frame, text="New Node Type:").grid(row=6, column=0, sticky=tk.W)
         self.new_node_attribute_combo = ttk.Combobox(
             edit_frame,
             textvariable=self._new_node_attribute,
@@ -284,37 +320,37 @@ class DocumentPane:
             state="normal",
             width=18,
         )
-        self.new_node_attribute_combo.grid(row=2, column=1, sticky=tk.EW, padx=(6, 0))
+        self.new_node_attribute_combo.grid(row=6, column=1, sticky=tk.EW, padx=(6, 0))
         ttk.Button(edit_frame, text="Add Child Node", command=self._add_child_node).grid(
-            row=2, column=2, sticky=tk.EW, padx=(6, 0)
+            row=6, column=2, sticky=tk.EW, padx=(6, 0)
         )
 
-        ttk.Label(edit_frame, text="Reparent target:").grid(row=3, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Label(edit_frame, text="Reparent target:").grid(row=7, column=0, sticky=tk.W, pady=(8, 0))
         ttk.Label(edit_frame, textvariable=self._reparent_target_var).grid(
-            row=3, column=1, sticky=tk.W, padx=(6, 0), pady=(8, 0)
+            row=7, column=1, sticky=tk.W, padx=(6, 0), pady=(8, 0)
         )
         ttk.Button(edit_frame, text="Mark Target", command=self._mark_reparent_target).grid(
-            row=3, column=2, padx=(6, 0), pady=(8, 0)
+            row=7, column=2, padx=(6, 0), pady=(8, 0)
         )
 
         ttk.Button(
             edit_frame,
             text="Reparent Selected to Target",
             command=self._reparent_to_target,
-        ).grid(row=4, column=0, columnspan=3, sticky=tk.EW, pady=(8, 0))
+        ).grid(row=8, column=0, columnspan=3, sticky=tk.EW, pady=(8, 0))
         ttk.Button(
             edit_frame,
             text="Promote Selected (Detach Parent)",
             command=self._promote_selected,
-        ).grid(row=5, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
+        ).grid(row=9, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
         ttk.Button(
             edit_frame,
             text="Remove Node (Promote Children)",
             command=self._remove_node_promote_children,
-        ).grid(row=6, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
+        ).grid(row=10, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
 
         ttk.Label(edit_frame, textvariable=self._node_status_var, foreground="#555555", wraplength=420).grid(
-            row=7, column=0, columnspan=3, sticky=tk.W, pady=(8, 0)
+            row=11, column=0, columnspan=3, sticky=tk.W, pady=(8, 0)
         )
 
         self.node_tree.bind("<<TreeviewSelect>>", self._on_node_select)
@@ -379,6 +415,11 @@ class DocumentPane:
         self.node_detail_vars["rotation"].set(_vector_to_string(node.rotation))
         self.node_detail_vars["scaling"].set(_vector_to_string(node.scaling))
 
+        self._node_name_edit.set(node.name)
+        self._translation_edit.set(_vector_to_string(node.translation))
+        self._rotation_edit.set(_vector_to_string(node.rotation))
+        self._scaling_edit.set(_vector_to_string(node.scaling))
+
         if node.properties:
             lines = [f"{key}: {value}" for key, value in node.properties.items()]
             self.node_properties_var.set("\n".join(lines))
@@ -409,6 +450,28 @@ class DocumentPane:
             return None
         return self._node_map.get(selection[0])
 
+    def _rename_selected_node(self) -> None:
+        node = self._get_selected_scene_node()
+        if node is None:
+            self._set_node_status("Select a node to rename.")
+            return
+
+        new_name = self._node_name_edit.get().strip()
+        if not new_name:
+            self._set_node_status("Enter a name before applying.")
+            return
+
+        node.name = new_name
+        if self._reparent_target is node:
+            self._reparent_target_var.set(new_name)
+
+        self.node_detail_vars["name"].set(new_name)
+        self._pending_focus_uid = node.uid
+        self._update_document_top_level()
+        if self.document.scene_graph:
+            self._populate_scene_tree(self.document.scene_graph)
+        self._set_node_status(f"Renamed node to {new_name}.")
+
     def _apply_attribute_change(self) -> None:
         node = self._get_selected_scene_node()
         if node is None:
@@ -436,6 +499,47 @@ class DocumentPane:
         if attribute_type:
             return attribute_type
         return "(NoAttribute)"
+
+    def _parse_vector_input(self, value: str) -> Optional[Tuple[float, float, float]]:
+        parts = [part for part in value.replace(",", " ").split() if part]
+        if len(parts) != 3:
+            return None
+        try:
+            vector = tuple(float(part) for part in parts)
+        except ValueError:
+            return None
+        return cast(Tuple[float, float, float], vector)
+
+    def _apply_transform_edit(self, attribute: str) -> None:
+        node = self._get_selected_scene_node()
+        if node is None:
+            self._set_node_status("Select a node to edit.")
+            return
+
+        attr_map = {
+            "translation": self._translation_edit,
+            "rotation": self._rotation_edit,
+            "scaling": self._scaling_edit,
+        }
+        var = attr_map.get(attribute)
+        if var is None:
+            return
+
+        label = attribute.capitalize()
+        vector = self._parse_vector_input(var.get().strip())
+        if vector is None:
+            self._set_node_status(f"Enter three numeric values for {label.lower()}.")
+            return
+
+        setattr(node, attribute, vector)
+        self.node_detail_vars[attribute].set(_vector_to_string(vector))
+        var.set(_vector_to_string(vector))
+
+        self._pending_focus_uid = node.uid
+        self._update_document_top_level()
+        if self.document.scene_graph:
+            self._populate_scene_tree(self.document.scene_graph)
+        self._set_node_status(f"Updated {label.lower()} for {node.name}.")
 
     def _add_child_node(self) -> None:
         parent = self._get_selected_scene_node()
