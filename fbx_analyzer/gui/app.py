@@ -14,6 +14,17 @@ from ..inspectors import SceneGraphInspector, SkeletonInspector, TopLevelInspect
 from ..models import AnalyzedScene, Joint, SceneNode, Skeleton
 
 
+DEFAULT_ATTRIBUTE_OPTIONS: Tuple[str, ...] = (
+    "Node",
+    "Null",
+    "Skeleton",
+    "Root",
+    "Limb",
+    "LimbNode",
+    "Effector",
+)
+
+
 class DocumentPane:
     """Render a single FBX analysis inside a notebook tab."""
 
@@ -27,17 +38,7 @@ class DocumentPane:
         self._joint_map: Dict[str, Joint] = {}
         self._node_map: Dict[str, SceneNode] = {}
         self._reparent_target: Optional[SceneNode] = None
-        self._attribute_options = [
-            "Node",
-            "Null",
-            "Skeleton",
-            "Root",
-            "Limb",
-            "LimbNode",
-            "Effector",
-        ]
-        self._pending_focus_uid: Optional[int] = None
-        self._pending_focus_node: Optional[SceneNode] = None
+        self._attribute_options = list(DEFAULT_ATTRIBUTE_OPTIONS)
 
         self.update_document_path(self.document.path)
         self._build_ui()
@@ -354,51 +355,7 @@ class DocumentPane:
         )
 
         self.node_tree.bind("<<TreeviewSelect>>", self._on_node_select)
-        self._populate_scene_tree(scene_graph)
-
-    def _populate_scene_tree(self, scene_graph: SceneNode) -> None:
-        self._rebuild_parent_links(scene_graph)
-        self._recompute_child_counts(scene_graph)
-
-        focus_uid = getattr(self, "_pending_focus_uid", None)
-        focus_node = getattr(self, "_pending_focus_node", None)
-        self._pending_focus_uid = None
-        self._pending_focus_node = None
-
-        self._node_map.clear()
-        self.node_tree.delete(*self.node_tree.get_children(""))
-
-        focus_item: Optional[str] = None
-
-        def insert(parent: str, node: SceneNode) -> None:
-            nonlocal focus_item
-            node_id = self.node_tree.insert(
-                parent,
-                tk.END,
-                text=node.name,
-                values=(node.attribute_type, node.attribute_class, node.child_count),
-            )
-            self._node_map[node_id] = node
-            if focus_uid is not None and node.uid == focus_uid:
-                focus_item = node_id
-            if focus_node is node:
-                focus_item = node_id
-            for child in node.children:
-                insert(node_id, child)
-
-        insert("", scene_graph)
-        root_items = self.node_tree.get_children("")
-        for child_id in root_items:
-            self.node_tree.item(child_id, open=True)
-
-        if focus_item:
-            self.node_tree.selection_set(focus_item)
-        elif root_items:
-            self.node_tree.selection_set(root_items[0])
-        else:
-            self.node_tree.selection_remove(self.node_tree.selection())
-
-        self._on_node_select(None)
+        self._render_scene_tree(scene_graph, focus_uid=None, focus_node=None)
 
     def _on_node_select(self, _event) -> None:
         if not hasattr(self, "node_tree"):
@@ -466,10 +423,7 @@ class DocumentPane:
             self._reparent_target_var.set(new_name)
 
         self.node_detail_vars["name"].set(new_name)
-        self._pending_focus_uid = node.uid
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
+        self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Renamed node to {new_name}.")
 
     def _apply_attribute_change(self) -> None:
@@ -484,10 +438,7 @@ class DocumentPane:
         node.attribute_type = new_type
         if node.attribute_class == "(NoAttribute)" and new_type in self._attribute_options:
             node.attribute_class = "Skeleton"
-        self._pending_focus_uid = node.uid
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
+        self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Updated attribute to {new_type}.")
 
     def _derive_attribute_class(self, attribute_type: str) -> str:
@@ -535,10 +486,7 @@ class DocumentPane:
         self.node_detail_vars[attribute].set(_vector_to_string(vector))
         var.set(_vector_to_string(vector))
 
-        self._pending_focus_uid = node.uid
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
+        self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Updated {label.lower()} for {node.name}.")
 
     def _add_child_node(self) -> None:
@@ -574,10 +522,7 @@ class DocumentPane:
         parent.children.append(new_node)
 
         self._new_node_name.set("")
-        self._pending_focus_node = new_node
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
+        self._refresh_scene_tree(focus_node=new_node)
         self._set_node_status(f"Added {new_node.name} under {parent.name}.")
 
     def _mark_reparent_target(self) -> None:
@@ -610,10 +555,7 @@ class DocumentPane:
             return
         parent.children.remove(node)
         target.children.append(node)
-        self._pending_focus_uid = node.uid
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
+        self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Moved {node.name} under {target.name}.")
 
     def _promote_selected(self) -> None:
@@ -631,10 +573,7 @@ class DocumentPane:
             return
         parent.children.remove(node)
         grandparent.children.append(node)
-        self._pending_focus_uid = node.uid
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
+        self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Promoted {node.name} to be a child of {grandparent.name}.")
 
     def _remove_node_promote_children(self) -> None:
@@ -644,6 +583,7 @@ class DocumentPane:
             return
         root = self.document.scene_graph
         parent = self._find_parent(root, node)
+        focus_uid: Optional[int] = None
         if parent is None:
             if not node.children:
                 self.document.scene_graph = None
@@ -653,25 +593,21 @@ class DocumentPane:
                 for child in node.children[1:]:
                     new_root.children.append(child)
                 self.document.scene_graph = new_root
+                focus_uid = new_root.uid
                 self._set_node_status(f"Removed root {node.name}; promoted {new_root.name} to root.")
-            self._reparent_target = None
-            self._reparent_target_var.set("<none>")
+            self._reset_reparent_target()
         else:
             parent.children.remove(node)
             parent.children.extend(node.children)
+            focus_uid = parent.uid
             self._set_node_status(
                 f"Removed {node.name}; promoted its children under {parent.name}."
             )
-        self._pending_focus_uid = parent.uid if parent else (self.document.scene_graph.uid if self.document.scene_graph else None)
-        self._update_document_top_level()
-        if self.document.scene_graph:
-            self._populate_scene_tree(self.document.scene_graph)
-        else:
-            self.node_tree.delete(*self.node_tree.get_children(""))
-            self._node_map.clear()
-            self.node_properties_var.set("<none>")
-            for var in self.node_detail_vars.values():
-                var.set("")
+
+        if self._reparent_target is node:
+            self._reset_reparent_target()
+
+        self._refresh_scene_tree(focus_uid=focus_uid)
 
     def _find_parent(self, current: Optional[SceneNode], target: SceneNode) -> Optional[SceneNode]:
         if current is None or current is target:
@@ -732,6 +668,86 @@ class DocumentPane:
         display_name = Path(self.document.path).name or self.document.path
         self._display_name_var.set(f"File: {display_name}")
         self._full_path_var.set(self.document.path)
+
+    def _refresh_scene_tree(
+        self,
+        *,
+        focus_uid: Optional[int] = None,
+        focus_node: Optional[SceneNode] = None,
+    ) -> None:
+        """Rebuild the tree view after mutating the in-memory scene graph."""
+
+        self._update_document_top_level()
+        scene_graph = self.document.scene_graph
+        if scene_graph is None:
+            self._clear_scene_tree_view()
+            return
+
+        self._render_scene_tree(scene_graph, focus_uid=focus_uid, focus_node=focus_node)
+
+    def _render_scene_tree(
+        self,
+        scene_graph: SceneNode,
+        *,
+        focus_uid: Optional[int],
+        focus_node: Optional[SceneNode],
+    ) -> None:
+        """Populate the tree widget from the provided ``SceneNode`` hierarchy."""
+
+        self._rebuild_parent_links(scene_graph)
+        self._recompute_child_counts(scene_graph)
+
+        self._node_map.clear()
+        self.node_tree.delete(*self.node_tree.get_children(""))
+
+        focus_item: Optional[str] = None
+
+        def insert(parent: str, node: SceneNode) -> None:
+            nonlocal focus_item
+            node_id = self.node_tree.insert(
+                parent,
+                tk.END,
+                text=node.name,
+                values=(node.attribute_type, node.attribute_class, node.child_count),
+            )
+            self._node_map[node_id] = node
+            if focus_uid is not None and node.uid == focus_uid:
+                focus_item = node_id
+            if focus_node is node:
+                focus_item = node_id
+            for child in node.children:
+                insert(node_id, child)
+
+        insert("", scene_graph)
+        root_items = self.node_tree.get_children("")
+        for child_id in root_items:
+            self.node_tree.item(child_id, open=True)
+
+        if focus_item:
+            self.node_tree.selection_set(focus_item)
+        elif root_items:
+            self.node_tree.selection_set(root_items[0])
+        else:
+            self.node_tree.selection_remove(self.node_tree.selection())
+
+        self._on_node_select(None)
+
+    def _clear_scene_tree_view(self) -> None:
+        """Reset the tree widget when the scene graph becomes empty."""
+
+        if not hasattr(self, "node_tree"):
+            return
+        self.node_tree.delete(*self.node_tree.get_children(""))
+        self._node_map.clear()
+        self.node_properties_var.set("<none>")
+        for var in self.node_detail_vars.values():
+            var.set("")
+
+    def _reset_reparent_target(self) -> None:
+        """Clear the currently marked reparent target."""
+
+        self._reparent_target = None
+        self._reparent_target_var.set("<none>")
 
 class FBXAnalyzerApp:
     """Main window that manages multiple FBX analyses."""

@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Set
 from ..core import sdk, traversal
 from ..core.analyzer import SceneContext, SceneInspector
 from ..models import Joint, JointTransform, Skeleton
+from ..utils import double3_to_tuple, resolve_enum_value
 
 
 _DEF_SKELETON_LABELS: Dict[str, str] = {
@@ -17,46 +18,9 @@ _DEF_SKELETON_LABELS: Dict[str, str] = {
 }
 
 
-def _resolve_enum_value(enum_holder: Any, target_name: str) -> Any:
-    """Resolve an enum value from the FBX SDK Python bindings.
-
-    Different FBX SDK releases expose enums either directly on the class or
-    nested inside helper classes (e.g., `EType`). This function normalises that
-    so we can write version-agnostic code.
-    """
-
-    if hasattr(enum_holder, target_name):
-        return getattr(enum_holder, target_name)
-
-    for attr_name in dir(enum_holder):
-        if attr_name.lower() == target_name.lower():
-            return getattr(enum_holder, attr_name)
-
-    nested = getattr(enum_holder, "EType", None)
-    if nested:
-        for attr_name in dir(nested):
-            if attr_name.lower() == target_name.lower():
-                return getattr(nested, attr_name)
-
-    raise AttributeError(f"Unable to resolve enum value '{target_name}' from {enum_holder!r}")
-
-
-def _build_skeleton_type_labels(fbx_module) -> Dict[Any, str]:
-    labels: Dict[Any, str] = {}
-    for key, caption in _DEF_SKELETON_LABELS.items():
-        try:
-            enum_value = _resolve_enum_value(fbx_module.FbxSkeleton, key)
-        except AttributeError:
-            continue
-        labels[enum_value] = caption
-    return labels
-
-
-def _double3_to_tuple(vector) -> tuple[float, float, float]:
-    return (float(vector[0]), float(vector[1]), float(vector[2]))
-
-
 class SkeletonInspector(SceneInspector):
+    """Gather skeleton hierarchies present within a scene."""
+
     id = "skeletons"
 
     def collect(self, context: SceneContext) -> List[Skeleton]:
@@ -67,8 +31,20 @@ class SkeletonInspector(SceneInspector):
         if explicit:
             return explicit
 
-        inferred = _collect_animation_bound_skeletons(context, fbx)
-        return inferred
+        return _collect_animation_bound_skeletons(context, fbx)
+
+
+def _build_skeleton_type_labels(fbx_module) -> Dict[Any, str]:
+    """Create a mapping from SDK skeleton enum to friendly labels."""
+
+    labels: Dict[Any, str] = {}
+    for key, caption in _DEF_SKELETON_LABELS.items():
+        try:
+            enum_value = resolve_enum_value(fbx_module.FbxSkeleton, key)
+        except AttributeError:
+            continue
+        labels[enum_value] = caption
+    return labels
 
 
 def _collect_explicit_skeletons(
@@ -97,9 +73,9 @@ def _collect_explicit_skeletons(
             name=node.GetName() or f"Node_{node.GetUniqueID()}",
             joint_type=joint_type,
             transform=JointTransform(
-                translation=_double3_to_tuple(node.LclTranslation.Get()),
-                rotation=_double3_to_tuple(node.LclRotation.Get()),
-                scaling=_double3_to_tuple(node.LclScaling.Get()),
+                translation=double3_to_tuple(node.LclTranslation.Get()),
+                rotation=double3_to_tuple(node.LclRotation.Get()),
+                scaling=double3_to_tuple(node.LclScaling.Get()),
             ),
             parent_name=parent_name,
         )
@@ -325,9 +301,9 @@ def _build_fallback_joint(
         name=node.GetName() or f"Node_{uid}",
         joint_type=_classify_fallback_joint(uid, cluster_uids, animated_uids),
         transform=JointTransform(
-            translation=_double3_to_tuple(node.LclTranslation.Get()),
-            rotation=_double3_to_tuple(node.LclRotation.Get()),
-            scaling=_double3_to_tuple(node.LclScaling.Get()),
+            translation=double3_to_tuple(node.LclTranslation.Get()),
+            rotation=double3_to_tuple(node.LclRotation.Get()),
+            scaling=double3_to_tuple(node.LclScaling.Get()),
         ),
         parent_name=parent_name,
     )
