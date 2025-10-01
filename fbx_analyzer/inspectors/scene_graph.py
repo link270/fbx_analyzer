@@ -15,7 +15,7 @@ class SceneGraphInspector(SceneInspector):
     def collect(self, context: SceneContext) -> SceneNode:
         fbx, _ = sdk.import_fbx_module()
 
-        def build(node) -> SceneNode:
+        def build(node, path: Tuple[int, ...]) -> SceneNode:
             attribute = node.GetNodeAttribute()
             attribute_type = attribute.GetTypeName() if attribute else "None"
             attribute_class = attribute.__class__.__name__ if attribute else "(NoAttribute)"
@@ -43,13 +43,14 @@ class SceneGraphInspector(SceneInspector):
                 child_count=node.GetChildCount(),
                 uid=node.GetUniqueID(),
                 parent_uid=node.GetParent().GetUniqueID() if node.GetParent() else None,
+                original_path=path,
                 properties=properties,
             )
 
             for idx in range(node.GetChildCount()):
-                scene_node.children.append(build(node.GetChild(idx)))
+                scene_node.children.append(build(node.GetChild(idx), path + (idx,)))
 
             scene_node.child_count = len(scene_node.children)
             return scene_node
 
-        return build(context.root_node)
+        return build(context.root_node, ())

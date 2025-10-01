@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..models import SceneNode
 from . import sdk
@@ -13,23 +13,18 @@ from .exceptions import FBXLoadError, FBXSaveError
 
 
 def save_scene_graph_as(source_path: str, target_path: str, scene_graph: Optional[SceneNode]) -> None:
-    """Persist ``scene_graph`` edits into a copy of ``source_path``.
-
-    The original FBX file is never modified. All changes are written to the
-    file located at ``target_path``.
-    """
+    """Persist edits in ``scene_graph`` into a copy of ``source_path``."""
 
     target_path = str(target_path)
     if os.path.abspath(source_path) == os.path.abspath(target_path):
         raise FBXSaveError("The destination path must be different from the source path.")
 
-    target_dir = Path(target_path).parent
-    target_dir.mkdir(parents=True, exist_ok=True)
+    Path(target_path).parent.mkdir(parents=True, exist_ok=True)
 
     if scene_graph is None:
         try:
             shutil.copy2(source_path, target_path)
-        except OSError as exc:  # pragma: no cover - depends on filesystem state
+        except OSError as exc:  # pragma: no cover
             raise FBXSaveError(f"Failed to copy FBX file to '{target_path}'") from exc
         return
 
@@ -49,16 +44,67 @@ def save_scene_graph_as(source_path: str, target_path: str, scene_graph: Optiona
 
 
 def _apply_scene_graph_changes(scene, scene_graph: SceneNode) -> None:
-    nodes_by_uid = _map_scene_nodes(scene.GetRootNode())
-    desired_relations, desired_attributes = _collect_desired_state(scene_graph)
+    scene_root = scene.GetRootNode()
+    existing_nodes = _map_scene_nodes(scene_root)
+    used_uids: set[int] = set()
 
-    _reparent_nodes(scene.GetRootNode(), nodes_by_uid, desired_relations, scene_graph)
-    _remove_deleted_nodes(scene.GetRootNode(), nodes_by_uid, desired_relations)
-    _apply_attribute_types(scene, nodes_by_uid, desired_attributes)
+    def sync(node_model: SceneNode, parent_fbx) -> Any:  # type: ignore[valid-type]
+        fbx, _ = sdk.import_fbx_module()
+
+        fbx_node = None
+        if node_model.uid is not None:
+            fbx_node = existing_nodes.get(node_model.uid)
+
+        if fbx_node is None:
+            name = node_model.name or "Node"
+            fbx_node = fbx.FbxNode.Create(scene, name)
+            parent_fbx.AddChild(fbx_node)
+            node_model.uid = fbx_node.GetUniqueID()
+            existing_nodes[node_model.uid] = fbx_node
+        else:
+            current_parent = fbx_node.GetParent()
+            if current_parent is not parent_fbx:
+                if current_parent is not None:
+                    current_parent.RemoveChild(fbx_node)
+                parent_fbx.AddChild(fbx_node)
+
+        used_uids.add(fbx_node.GetUniqueID())
+
+        _apply_node_attribute(scene, fbx_node, node_model.attribute_type, node_model.attribute_class)
+        _apply_node_transform(fbx_node, node_model)
+
+        desired_children = []
+        for child_model in node_model.children:
+            child_fbx = sync(child_model, fbx_node)
+            desired_children.append(child_fbx)
+
+        desired_ids = {child.GetUniqueID() for child in desired_children}
+        for idx in reversed(range(fbx_node.GetChildCount())):
+            child = fbx_node.GetChild(idx)
+            if child.GetUniqueID() not in desired_ids:
+                fbx_node.RemoveChild(child)
+
+        return fbx_node
+
+    sync(scene_graph, scene_root)
+
+    # Remove nodes that are not part of the desired scene graph
+    for uid, node in list(existing_nodes.items()):
+        if uid == scene_root.GetUniqueID():
+            continue
+        if uid not in used_uids:
+            parent = node.GetParent()
+            if parent is None:
+                continue
+            children = [node.GetChild(i) for i in range(node.GetChildCount())]
+            for child in children:
+                node.RemoveChild(child)
+                parent.AddChild(child)
+            parent.RemoveChild(node)
 
 
 def _map_scene_nodes(root) -> Dict[int, Any]:  # type: ignore[valid-type]
-    mapping: Dict[int, Any] = {}  # type: ignore[valid-type]
+    mapping: Dict[int, Any] = {}
 
     def walk(node) -> None:  # type: ignore[valid-type]
         mapping[node.GetUniqueID()] = node
@@ -69,95 +115,39 @@ def _map_scene_nodes(root) -> Dict[int, Any]:  # type: ignore[valid-type]
     return mapping
 
 
-def _collect_desired_state(scene_graph: SceneNode) -> Tuple[Dict[int, Optional[int]], Dict[int, Tuple[str, str]]]:
-    relations: Dict[int, Optional[int]] = {}
-    attributes: Dict[int, Tuple[str, str]] = {}
-
-    def visit(node: SceneNode, parent_uid: Optional[int]) -> None:
-        if node.uid is None:
-            return
-        relations[node.uid] = parent_uid
-        attributes[node.uid] = (node.attribute_type, node.attribute_class)
-        for child in node.children:
-            visit(child, node.uid)
-
-    visit(scene_graph, None)
-    return relations, attributes
+def _resolve_enum_value(enum_holder, target_name: str):
+    if hasattr(enum_holder, target_name):
+        return getattr(enum_holder, target_name)
+    for attr in dir(enum_holder):
+        if attr.lower() == target_name.lower():
+            return getattr(enum_holder, attr)
+    nested = getattr(enum_holder, "EType", None)
+    if nested is not None:
+        for attr in dir(nested):
+            if attr.lower() == target_name.lower():
+                return getattr(nested, attr)
+    return None
 
 
-def _reparent_nodes(scene_root, nodes_by_uid: Dict[int, Any], relations: Dict[int, Optional[int]], scene_graph: SceneNode) -> None:  # type: ignore[valid-type]
-    ordered_uids: List[int] = []
-
-    def collect(node: SceneNode) -> None:
-        if node.uid is not None:
-            ordered_uids.append(node.uid)
-        for child in node.children:
-            collect(child)
-
-    collect(scene_graph)
-
-    for uid in ordered_uids:
-        node = nodes_by_uid.get(uid)
-        if node is None:
-            continue
-        desired_parent_uid = relations.get(uid)
-        current_parent = node.GetParent()
-        current_parent_uid = current_parent.GetUniqueID() if current_parent else None
-        if current_parent_uid == desired_parent_uid:
-            continue
-        if desired_parent_uid is None:
-            if current_parent is None:
-                continue
-            current_parent.RemoveChild(node)
-            scene_root.AddChild(node)
-            continue
-        desired_parent = nodes_by_uid.get(desired_parent_uid)
-        if desired_parent is None:
-            continue
-        if current_parent is not None:
-            current_parent.RemoveChild(node)
-        desired_parent.AddChild(node)
-
-
-def _remove_deleted_nodes(scene_root, nodes_by_uid: Dict[int, Any], relations: Dict[int, Optional[int]]) -> None:  # type: ignore[valid-type]
-    desired_uids = set(relations.keys())
-    for uid, node in list(nodes_by_uid.items()):
-        if uid in desired_uids:
-            continue
-        if node is scene_root:
-            continue
-        parent = node.GetParent()
-        if parent is None:
-            continue
-        children = [node.GetChild(idx) for idx in range(node.GetChildCount())]
-        for child in children:
-            node.RemoveChild(child)
-            parent.AddChild(child)
-        parent.RemoveChild(node)
-        nodes_by_uid.pop(uid, None)
-
-
-def _apply_attribute_types(scene, nodes_by_uid: Dict[int, Any], attributes: Dict[int, Tuple[str, str]]) -> None:  # type: ignore[valid-type]
+def _apply_node_attribute(scene, node, attr_type: str, attr_class: str) -> None:  # type: ignore[valid-type]
     fbx, _ = sdk.import_fbx_module()
-    skeleton_map = {
-        "Root": fbx.FbxSkeleton.eRoot,
-        "Limb": fbx.FbxSkeleton.eLimb,
-        "LimbNode": fbx.FbxSkeleton.eLimbNode,
-        "Effector": fbx.FbxSkeleton.eEffector,
-    }
+    skeleton_labels = {"Root": "eRoot", "Limb": "eLimb", "LimbNode": "eLimbNode", "Effector": "eEffector"}
+    skeleton_types = {label: _resolve_enum_value(fbx.FbxSkeleton, value) for label, value in skeleton_labels.items()}
 
-    for uid, (attr_type, _attr_class) in attributes.items():
-        node = nodes_by_uid.get(uid)
-        if node is None:
-            continue
-        node_attribute = node.GetNodeAttribute()
+    node_attribute = node.GetNodeAttribute()
 
-        if attr_type in skeleton_map:
-            if not isinstance(node_attribute, fbx.FbxSkeleton):
-                skeleton = fbx.FbxSkeleton.Create(scene, node.GetName() or "Skeleton")
-                node.SetNodeAttribute(skeleton)
-                node_attribute = skeleton
-            node_attribute.SetSkeletonType(skeleton_map[attr_type])
-        elif attr_type == "Node" and isinstance(node_attribute, fbx.FbxSkeleton):
+    if attr_type in skeleton_types and skeleton_types[attr_type] is not None:
+        if not isinstance(node_attribute, fbx.FbxSkeleton):
+            skeleton = fbx.FbxSkeleton.Create(scene, node.GetName() or "Skeleton")
+            node.SetNodeAttribute(skeleton)
+            node_attribute = skeleton
+        node_attribute.SetSkeletonType(skeleton_types[attr_type])
+    else:
+        if isinstance(node_attribute, fbx.FbxSkeleton) and attr_type == "Node":
             node.SetNodeAttribute(None)
 
+
+def _apply_node_transform(node, model: SceneNode) -> None:  # type: ignore[valid-type]
+    node.LclTranslation.Set(*model.translation)
+    node.LclRotation.Set(*model.rotation)
+    node.LclScaling.Set(*model.scaling)
