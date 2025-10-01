@@ -103,6 +103,12 @@ def _map_scene_nodes(root) -> Dict[int, Any]:  # type: ignore[valid-type]
 def _ensure_parent(parent_fbx, child):  # type: ignore[valid-type]
     """Ensure ``child`` is parented to ``parent_fbx``."""
 
+    if child is parent_fbx:
+        # The FBX root node is its own logical parent and must not be re-parented
+        # or added as a child of itself. Attempting to do so results in an
+        # additional root node being added under the true root on save.
+        return
+
     current_parent = child.GetParent()
     if current_parent is parent_fbx:
         return
