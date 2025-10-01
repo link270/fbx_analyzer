@@ -69,3 +69,20 @@ def destroy_manager(manager):
     """Destroy the manager and free SDK resources."""
 
     manager.Destroy()
+
+
+def save_scene(manager, scene, path: str) -> bool:
+    """Save the provided FBX scene to ``path``."""
+
+    fbx, _ = import_fbx_module()
+    exporter = fbx.FbxExporter.Create(manager, "")
+    try:
+        registry = manager.GetIOPluginRegistry()
+        file_format = registry.GetNativeWriterFormat()
+        if not exporter.Initialize(path, file_format, manager.GetIOSettings()):
+            return False
+        if not exporter.Export(scene):
+            return False
+        return True
+    finally:
+        exporter.Destroy()
