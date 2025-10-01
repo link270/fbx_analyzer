@@ -51,6 +51,7 @@ class SceneNode:
     child_count: int
     uid: Optional[int] = None
     parent_uid: Optional[int] = None
+    original_path: Tuple[int, ...] = ()
     properties: Dict[str, str] = field(default_factory=dict)
     children: List['SceneNode'] = field(default_factory=list)
 
