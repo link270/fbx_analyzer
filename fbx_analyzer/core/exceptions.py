@@ -6,3 +6,7 @@ class FBXSDKNotAvailableError(ImportError):
 
 class FBXLoadError(RuntimeError):
     """Raised when a scene fails to load."""
+
+
+class FBXSaveError(RuntimeError):
+    """Raised when a scene fails to save."""

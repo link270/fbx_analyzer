@@ -8,7 +8,8 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, Iterable, List, Optional
 
 from ..core import FBXAnalyzer
-from ..core.exceptions import FBXLoadError, FBXSDKNotAvailableError
+from ..core.exceptions import FBXLoadError, FBXSDKNotAvailableError, FBXSaveError
+from ..core.save_as import save_scene_graph_as
 from ..inspectors import SceneGraphInspector, SkeletonInspector, TopLevelInspector
 from ..models import AnalyzedScene, Joint, SceneNode, Skeleton
 
@@ -20,12 +21,16 @@ class DocumentPane:
         self.document = document
         self.frame = ttk.Frame(parent)
 
+        self._display_name_var = tk.StringVar(value="")
+        self._full_path_var = tk.StringVar(value="")
+
         self._joint_map: Dict[str, Joint] = {}
         self._node_map: Dict[str, SceneNode] = {}
         self._reparent_target: Optional[SceneNode] = None
         self._attribute_options = ["Root", "Limb", "LimbNode", "Effector", "Node"]
         self._pending_focus_uid: Optional[int] = None
 
+        self.update_document_path(self.document.path)
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -35,15 +40,14 @@ class DocumentPane:
         header = ttk.Frame(self.frame, padding=(10, 6))
         header.pack(fill=tk.X, side=tk.TOP)
 
-        display_name = Path(self.document.path).name
         ttk.Label(
             header,
-            text=f"File: {display_name}",
+            textvariable=self._display_name_var,
             font=("Helvetica", 12, "bold"),
         ).pack(side=tk.LEFT)
         ttk.Label(
             header,
-            text=self.document.path,
+            textvariable=self._full_path_var,
             font=("Helvetica", 9),
             foreground="#666666",
             wraplength=600,
@@ -527,6 +531,12 @@ class DocumentPane:
     def _set_node_status(self, message: str) -> None:
         self._node_status_var.set(message)
 
+    def update_document_path(self, new_path: str) -> None:
+        self.document.path = str(new_path)
+        display_name = Path(self.document.path).name or self.document.path
+        self._display_name_var.set(f"File: {display_name}")
+        self._full_path_var.set(self.document.path)
+
 class FBXAnalyzerApp:
     """Main window that manages multiple FBX analyses."""
 
@@ -553,6 +563,9 @@ class FBXAnalyzerApp:
 
         import_button = ttk.Button(toolbar, text="Import FBX...", command=self._on_import_clicked)
         import_button.pack(side=tk.LEFT)
+
+        save_button = ttk.Button(toolbar, text="Save As...", command=self._on_save_as_clicked)
+        save_button.pack(side=tk.LEFT, padx=(6, 0))
 
         close_button = ttk.Button(toolbar, text="Close Tab", command=self._on_close_clicked)
         close_button.pack(side=tk.LEFT, padx=(6, 0))
@@ -596,6 +609,39 @@ class FBXAnalyzerApp:
         self.notebook.forget(tab_id)
         pane.frame.destroy()
         self._update_status()
+
+    def _on_save_as_clicked(self) -> None:
+        tab_id = self.notebook.select()
+        if not tab_id:
+            messagebox.showinfo("FBX Analyzer", "Load an FBX file before saving.", parent=self.root)
+            return
+
+        pane = self.document_tabs.get(tab_id)
+        if pane is None:
+            messagebox.showinfo("FBX Analyzer", "Load an FBX file before saving.", parent=self.root)
+            return
+
+        current_path = Path(pane.document.path)
+        initial_dir = current_path.parent if current_path.parent.exists() else Path.cwd()
+        save_path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save FBX As...",
+            defaultextension=".fbx",
+            filetypes=[("FBX files", "*.fbx"), ("All files", "*.*")],
+            initialdir=str(initial_dir),
+            initialfile=current_path.name,
+        )
+        if not save_path:
+            return
+
+        try:
+            save_scene_graph_as(pane.document.path, save_path, pane.document.scene_graph)
+        except (FBXSDKNotAvailableError, FBXLoadError, FBXSaveError) as exc:
+            messagebox.showerror("FBX Analyzer", str(exc), parent=self.root)
+            return
+
+        pane.update_document_path(save_path)
+        self.status_var.set(f"Saved copy to {save_path}")
 
     def _analyze_file(self, path: str) -> Optional[AnalyzedScene]:
         skeleton_inspector = SkeletonInspector()
