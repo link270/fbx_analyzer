@@ -27,8 +27,17 @@ class DocumentPane:
         self._joint_map: Dict[str, Joint] = {}
         self._node_map: Dict[str, SceneNode] = {}
         self._reparent_target: Optional[SceneNode] = None
-        self._attribute_options = ["Root", "Limb", "LimbNode", "Effector", "Node"]
+        self._attribute_options = [
+            "Node",
+            "Null",
+            "Skeleton",
+            "Root",
+            "Limb",
+            "LimbNode",
+            "Effector",
+        ]
         self._pending_focus_uid: Optional[int] = None
+        self._pending_focus_node: Optional[SceneNode] = None
 
         self.update_document_path(self.document.path)
         self._build_ui()
@@ -174,9 +183,13 @@ class DocumentPane:
             ).pack(fill=tk.BOTH, expand=True)
             return
 
-        self._attribute_choice = tk.StringVar(value="")
+        default_attribute = self._attribute_options[0] if self._attribute_options else ""
+        self._attribute_choice = tk.StringVar(value=default_attribute)
         self._reparent_target_var = tk.StringVar(value="<none>")
         self._node_status_var = tk.StringVar(value="")
+        default_new_type = "LimbNode" if "LimbNode" in self._attribute_options else default_attribute
+        self._new_node_name = tk.StringVar(value="")
+        self._new_node_attribute = tk.StringVar(value=default_new_type)
 
         main_pane = ttk.Panedwindow(container, orient=tk.HORIZONTAL)
         main_pane.pack(fill=tk.BOTH, expand=True)
@@ -258,32 +271,50 @@ class DocumentPane:
             row=0, column=2, padx=(6, 0)
         )
 
-        ttk.Label(edit_frame, text="Reparent target:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Label(edit_frame, text="New Node Name:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
+        ttk.Entry(edit_frame, textvariable=self._new_node_name).grid(
+            row=1, column=1, columnspan=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0)
+        )
+
+        ttk.Label(edit_frame, text="New Node Type:").grid(row=2, column=0, sticky=tk.W)
+        self.new_node_attribute_combo = ttk.Combobox(
+            edit_frame,
+            textvariable=self._new_node_attribute,
+            values=self._attribute_options,
+            state="normal",
+            width=18,
+        )
+        self.new_node_attribute_combo.grid(row=2, column=1, sticky=tk.EW, padx=(6, 0))
+        ttk.Button(edit_frame, text="Add Child Node", command=self._add_child_node).grid(
+            row=2, column=2, sticky=tk.EW, padx=(6, 0)
+        )
+
+        ttk.Label(edit_frame, text="Reparent target:").grid(row=3, column=0, sticky=tk.W, pady=(8, 0))
         ttk.Label(edit_frame, textvariable=self._reparent_target_var).grid(
-            row=1, column=1, sticky=tk.W, padx=(6, 0), pady=(8, 0)
+            row=3, column=1, sticky=tk.W, padx=(6, 0), pady=(8, 0)
         )
         ttk.Button(edit_frame, text="Mark Target", command=self._mark_reparent_target).grid(
-            row=1, column=2, padx=(6, 0), pady=(8, 0)
+            row=3, column=2, padx=(6, 0), pady=(8, 0)
         )
 
         ttk.Button(
             edit_frame,
             text="Reparent Selected to Target",
             command=self._reparent_to_target,
-        ).grid(row=2, column=0, columnspan=3, sticky=tk.EW, pady=(8, 0))
+        ).grid(row=4, column=0, columnspan=3, sticky=tk.EW, pady=(8, 0))
         ttk.Button(
             edit_frame,
             text="Promote Selected (Detach Parent)",
             command=self._promote_selected,
-        ).grid(row=3, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
+        ).grid(row=5, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
         ttk.Button(
             edit_frame,
             text="Remove Node (Promote Children)",
             command=self._remove_node_promote_children,
-        ).grid(row=4, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
+        ).grid(row=6, column=0, columnspan=3, sticky=tk.EW, pady=(4, 0))
 
         ttk.Label(edit_frame, textvariable=self._node_status_var, foreground="#555555", wraplength=420).grid(
-            row=5, column=0, columnspan=3, sticky=tk.W, pady=(8, 0)
+            row=7, column=0, columnspan=3, sticky=tk.W, pady=(8, 0)
         )
 
         self.node_tree.bind("<<TreeviewSelect>>", self._on_node_select)
@@ -294,7 +325,9 @@ class DocumentPane:
         self._recompute_child_counts(scene_graph)
 
         focus_uid = getattr(self, "_pending_focus_uid", None)
+        focus_node = getattr(self, "_pending_focus_node", None)
         self._pending_focus_uid = None
+        self._pending_focus_node = None
 
         self._node_map.clear()
         self.node_tree.delete(*self.node_tree.get_children(""))
@@ -311,6 +344,8 @@ class DocumentPane:
             )
             self._node_map[node_id] = node
             if focus_uid is not None and node.uid == focus_uid:
+                focus_item = node_id
+            if focus_node is node:
                 focus_item = node_id
             for child in node.children:
                 insert(node_id, child)
@@ -350,7 +385,15 @@ class DocumentPane:
         else:
             self.node_properties_var.set("<none>")
 
+        if node.attribute_type and node.attribute_type not in self._attribute_options:
+            self._attribute_options.append(node.attribute_type)
+            self.attribute_combo.configure(values=self._attribute_options)
+            self.new_node_attribute_combo.configure(values=self._attribute_options)
         self._attribute_choice.set(node.attribute_type)
+        if node.attribute_type in self._attribute_options:
+            self._new_node_attribute.set(node.attribute_type)
+        else:
+            self._new_node_attribute.set(self._attribute_options[0])
         if self._reparent_target and not self._node_exists(self._reparent_target):
             self._reparent_target = None
             self._reparent_target_var.set("<none>")
@@ -383,6 +426,55 @@ class DocumentPane:
         if self.document.scene_graph:
             self._populate_scene_tree(self.document.scene_graph)
         self._set_node_status(f"Updated attribute to {new_type}.")
+
+    def _derive_attribute_class(self, attribute_type: str) -> str:
+        skeleton_types = {"Root", "Limb", "LimbNode", "Effector"}
+        if attribute_type in skeleton_types:
+            return "Skeleton"
+        if attribute_type == "Node":
+            return "(NoAttribute)"
+        if attribute_type:
+            return attribute_type
+        return "(NoAttribute)"
+
+    def _add_child_node(self) -> None:
+        parent = self._get_selected_scene_node()
+        if parent is None:
+            self._set_node_status("Select a parent node before adding a child.")
+            return
+
+        name = self._new_node_name.get().strip() or "NewNode"
+        attribute_type = self._new_node_attribute.get().strip() or "Node"
+        attribute_class = self._derive_attribute_class(attribute_type)
+
+        existing_names = {child.name for child in parent.children}
+        unique_name = name
+        suffix = 1
+        while unique_name in existing_names:
+            suffix += 1
+            unique_name = f"{name}_{suffix}"
+
+        new_node = SceneNode(
+            name=unique_name,
+            attribute_type=attribute_type,
+            attribute_class=attribute_class,
+            translation=(0.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0),
+            scaling=(1.0, 1.0, 1.0),
+            child_count=0,
+            uid=None,
+            parent_uid=parent.uid,
+            original_path=(),
+            properties={},
+        )
+        parent.children.append(new_node)
+
+        self._new_node_name.set("")
+        self._pending_focus_node = new_node
+        self._update_document_top_level()
+        if self.document.scene_graph:
+            self._populate_scene_tree(self.document.scene_graph)
+        self._set_node_status(f"Added {new_node.name} under {parent.name}.")
 
     def _mark_reparent_target(self) -> None:
         node = self._get_selected_scene_node()
