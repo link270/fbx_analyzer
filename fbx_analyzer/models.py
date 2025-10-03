@@ -60,9 +60,53 @@ class SceneNode:
         for child in self.children:
             yield from child.walk()
 
+
+@dataclass
+class FBXPropertyEntry:
+    name: str
+    type_name: str
+    value: str
+    flags: Tuple[str, ...] = ()
+
+
+@dataclass
+class FBXConnectionInfo:
+    direction: str
+    target_uid: int
+    target_name: str
+    target_class: str
+
+
+@dataclass
+class SceneObjectInfo:
+    uid: int
+    name: str
+    class_name: str
+    type_name: str
+    properties: List[FBXPropertyEntry] = field(default_factory=list)
+    src_connections: List[FBXConnectionInfo] = field(default_factory=list)
+    dst_connections: List[FBXConnectionInfo] = field(default_factory=list)
+
+
+@dataclass
+class DefinitionSummary:
+    class_name: str
+    object_count: int
+
+
+@dataclass
+class SceneMetadata:
+    global_settings: List[FBXPropertyEntry] = field(default_factory=list)
+    document_info: List[FBXPropertyEntry] = field(default_factory=list)
+    objects: List[SceneObjectInfo] = field(default_factory=list)
+    definitions: List[DefinitionSummary] = field(default_factory=list)
+
+
 @dataclass
 class AnalyzedScene:
     path: str
     skeletons: List[Skeleton]
     scene_graph: Optional[SceneNode]
     top_level_nodes: List[Dict[str, Any]]
+    metadata: SceneMetadata = field(default_factory=SceneMetadata)
+    scene_graph_dirty: bool = False

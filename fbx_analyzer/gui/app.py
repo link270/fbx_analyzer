@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -9,9 +11,23 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 
 from ..core import FBXAnalyzer
 from ..core.exceptions import FBXLoadError, FBXSDKNotAvailableError, FBXSaveError
-from ..core.save_as import save_scene_graph_as
-from ..inspectors import SceneGraphInspector, SkeletonInspector, TopLevelInspector
-from ..models import AnalyzedScene, Joint, SceneNode, Skeleton
+from ..core.save_as import (
+    SceneExportDiagnostics,
+    rebuild_scene_graph_as,
+    save_scene_graph_as,
+)
+from ..inspectors import SceneGraphInspector, SceneMetadataInspector, SkeletonInspector, TopLevelInspector
+from ..models import (
+    AnalyzedScene,
+    DefinitionSummary,
+    FBXConnectionInfo,
+    FBXPropertyEntry,
+    Joint,
+    SceneMetadata,
+    SceneNode,
+    SceneObjectInfo,
+    Skeleton,
+)
 
 
 DEFAULT_ATTRIBUTE_OPTIONS: Tuple[str, ...] = (
@@ -39,6 +55,9 @@ class DocumentPane:
         self._node_map: Dict[str, SceneNode] = {}
         self._reparent_target: Optional[SceneNode] = None
         self._attribute_options = list(DEFAULT_ATTRIBUTE_OPTIONS)
+
+        self.metadata: SceneMetadata = document.metadata or SceneMetadata()
+        self._object_metadata: Dict[int, SceneObjectInfo] = {obj.uid: obj for obj in self.metadata.objects}
 
         self.update_document_path(self.document.path)
         self._build_ui()
@@ -74,6 +93,10 @@ class DocumentPane:
         notebook.add(skeleton_frame, text="Skeleton")
         self._build_skeleton_tab(skeleton_frame)
 
+        metadata_frame = ttk.Frame(notebook)
+        notebook.add(metadata_frame, text="Metadata")
+        self._build_metadata_tab(metadata_frame)
+
     # ------------------------------------------------------------------
     # Skeleton tab
 
@@ -95,9 +118,42 @@ class DocumentPane:
         main_pane.pack(fill=tk.BOTH, expand=True)
 
         tree_frame = ttk.Frame(main_pane, padding=8)
-        detail_frame = ttk.Frame(main_pane, padding=8)
         main_pane.add(tree_frame, weight=1)
-        main_pane.add(detail_frame, weight=2)
+
+        detail_container = ttk.Frame(main_pane)
+        main_pane.add(detail_container, weight=2)
+
+        detail_canvas = tk.Canvas(detail_container, highlightthickness=0)
+        detail_scrollbar = ttk.Scrollbar(detail_container, orient=tk.VERTICAL, command=detail_canvas.yview)
+        detail_canvas.configure(yscrollcommand=detail_scrollbar.set)
+        detail_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        detail_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        detail_frame = ttk.Frame(detail_canvas, padding=8)
+        detail_window = detail_canvas.create_window((0, 0), window=detail_frame, anchor="nw")
+
+        def _configure_detail_frame(_event) -> None:
+            detail_canvas.configure(scrollregion=detail_canvas.bbox("all"))
+            detail_canvas.itemconfigure(detail_window, width=detail_canvas.winfo_width())
+
+        detail_frame.bind("<Configure>", _configure_detail_frame)
+
+        def _on_detail_mousewheel(event) -> None:
+            delta = getattr(event, "delta", 0)
+            if delta:
+                detail_canvas.yview_scroll(int(-delta / 120), "units")
+            else:
+                num = getattr(event, "num", None)
+                if num == 5:
+                    detail_canvas.yview_scroll(1, "units")
+                elif num == 4:
+                    detail_canvas.yview_scroll(-1, "units")
+
+        detail_canvas.bind("<MouseWheel>", _on_detail_mousewheel)
+        detail_canvas.bind("<Button-4>", _on_detail_mousewheel)
+        detail_canvas.bind("<Button-5>", _on_detail_mousewheel)
+        detail_canvas.bind("<Configure>", lambda event: detail_canvas.itemconfigure(detail_window, width=event.width))
+
 
         self.joint_tree = ttk.Treeview(tree_frame, columns=("type",), show="tree headings")
         self.joint_tree.heading("type", text="Type")
@@ -121,7 +177,7 @@ class DocumentPane:
         }
 
         detail_rows = ttk.Frame(detail_frame)
-        detail_rows.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        detail_rows.pack(fill=tk.X, expand=False, pady=(8, 0))
 
         for idx, (label, var) in enumerate(self.joint_detail_vars.items()):
             row = ttk.Frame(detail_rows)
@@ -200,9 +256,42 @@ class DocumentPane:
         main_pane.pack(fill=tk.BOTH, expand=True)
 
         tree_frame = ttk.Frame(main_pane, padding=8)
-        detail_frame = ttk.Frame(main_pane, padding=8)
         main_pane.add(tree_frame, weight=1)
-        main_pane.add(detail_frame, weight=2)
+
+        detail_container = ttk.Frame(main_pane)
+        main_pane.add(detail_container, weight=2)
+
+        detail_canvas = tk.Canvas(detail_container, highlightthickness=0)
+        detail_scrollbar = ttk.Scrollbar(detail_container, orient=tk.VERTICAL, command=detail_canvas.yview)
+        detail_canvas.configure(yscrollcommand=detail_scrollbar.set)
+        detail_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        detail_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        detail_frame = ttk.Frame(detail_canvas, padding=8)
+        detail_window = detail_canvas.create_window((0, 0), window=detail_frame, anchor="nw")
+
+        def _configure_detail_frame(_event) -> None:
+            detail_canvas.configure(scrollregion=detail_canvas.bbox("all"))
+            detail_canvas.itemconfigure(detail_window, width=detail_canvas.winfo_width())
+
+        detail_frame.bind("<Configure>", _configure_detail_frame)
+
+        def _on_detail_mousewheel(event) -> None:
+            delta = getattr(event, "delta", 0)
+            if delta:
+                detail_canvas.yview_scroll(int(-delta / 120), "units")
+            else:
+                num = getattr(event, "num", None)
+                if num == 5:
+                    detail_canvas.yview_scroll(1, "units")
+                elif num == 4:
+                    detail_canvas.yview_scroll(-1, "units")
+
+        detail_canvas.bind("<MouseWheel>", _on_detail_mousewheel)
+        detail_canvas.bind("<Button-4>", _on_detail_mousewheel)
+        detail_canvas.bind("<Button-5>", _on_detail_mousewheel)
+        detail_canvas.bind("<Configure>", lambda event: detail_canvas.itemconfigure(detail_window, width=event.width))
+
 
         self.node_tree = ttk.Treeview(
             tree_frame,
@@ -354,8 +443,267 @@ class DocumentPane:
             row=11, column=0, columnspan=3, sticky=tk.W, pady=(8, 0)
         )
 
+        metadata_pane = ttk.Panedwindow(detail_frame, orient=tk.VERTICAL)
+        metadata_pane.pack(fill=tk.BOTH, expand=True, pady=(12, 0))
+
+        property_frame = ttk.LabelFrame(metadata_pane, text="FBX Properties", padding=8)
+        connection_frame = ttk.LabelFrame(metadata_pane, text="Connections", padding=8)
+        metadata_pane.add(property_frame, weight=3)
+        metadata_pane.add(connection_frame, weight=2)
+
+        self.node_property_tree = ttk.Treeview(
+            property_frame,
+            columns=("category", "name", "type", "value", "flags"),
+            show="headings",
+        )
+        for column, heading, width, anchor in [
+            ("category", "Category", 110, tk.W),
+            ("name", "Name", 160, tk.W),
+            ("type", "Type", 140, tk.W),
+            ("value", "Value", 240, tk.W),
+            ("flags", "Flags", 140, tk.W),
+        ]:
+            self.node_property_tree.heading(column, text=heading)
+            self.node_property_tree.column(column, width=width, anchor=anchor, stretch=True)
+        property_scrollbar = ttk.Scrollbar(property_frame, orient=tk.VERTICAL, command=self.node_property_tree.yview)
+        self.node_property_tree.configure(yscrollcommand=property_scrollbar.set)
+        self.node_property_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        property_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.node_connection_tree = ttk.Treeview(
+            connection_frame,
+            columns=("direction", "name", "class", "uid"),
+            show="headings",
+        )
+        for column, heading, width, anchor in [
+            ("direction", "Direction", 120, tk.W),
+            ("name", "Name", 180, tk.W),
+            ("class", "Class", 180, tk.W),
+            ("uid", "UID", 140, tk.W),
+        ]:
+            self.node_connection_tree.heading(column, text=heading)
+            self.node_connection_tree.column(column, width=width, anchor=anchor, stretch=True)
+        connection_scrollbar = ttk.Scrollbar(connection_frame, orient=tk.VERTICAL, command=self.node_connection_tree.yview)
+        self.node_connection_tree.configure(yscrollcommand=connection_scrollbar.set)
+        self.node_connection_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        connection_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
         self.node_tree.bind("<<TreeviewSelect>>", self._on_node_select)
         self._render_scene_tree(scene_graph, focus_uid=None, focus_node=None)
+
+    def _build_metadata_tab(self, container: ttk.Frame) -> None:
+        metadata_notebook = ttk.Notebook(container)
+        metadata_notebook.pack(fill=tk.BOTH, expand=True)
+
+        global_frame = ttk.Frame(metadata_notebook, padding=8)
+        metadata_notebook.add(global_frame, text="Global Settings")
+        self.global_settings_tree = self._create_property_tree(global_frame)
+        self._populate_metadata_tree(self.global_settings_tree, self.metadata.global_settings, "Global")
+
+        document_frame = ttk.Frame(metadata_notebook, padding=8)
+        metadata_notebook.add(document_frame, text="Document Info")
+        self.document_info_tree = self._create_property_tree(document_frame)
+        self._populate_metadata_tree(self.document_info_tree, self.metadata.document_info, "Document")
+
+        definitions_frame = ttk.Frame(metadata_notebook, padding=8)
+        metadata_notebook.add(definitions_frame, text="Definitions")
+        self.definitions_tree = ttk.Treeview(definitions_frame, columns=("class", "count"), show="headings")
+        self.definitions_tree.heading("class", text="Class")
+        self.definitions_tree.heading("count", text="Count")
+        self.definitions_tree.column("class", width=260, anchor=tk.W)
+        self.definitions_tree.column("count", width=120, anchor=tk.CENTER)
+        definitions_scroll = ttk.Scrollbar(definitions_frame, orient=tk.VERTICAL, command=self.definitions_tree.yview)
+        self.definitions_tree.configure(yscrollcommand=definitions_scroll.set)
+        self.definitions_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        definitions_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        if self.metadata.definitions:
+            for definition in self.metadata.definitions:
+                self.definitions_tree.insert("", tk.END, values=(definition.class_name, definition.object_count))
+        else:
+            self.definitions_tree.insert("", tk.END, values=("<none>", ""))
+
+        objects_frame = ttk.Frame(metadata_notebook, padding=4)
+        metadata_notebook.add(objects_frame, text="Objects")
+
+        objects_pane = ttk.Panedwindow(objects_frame, orient=tk.HORIZONTAL)
+        objects_pane.pack(fill=tk.BOTH, expand=True)
+
+        object_list_frame = ttk.Frame(objects_pane, padding=4)
+        object_detail_frame = ttk.Frame(objects_pane, padding=4)
+        objects_pane.add(object_list_frame, weight=1)
+        objects_pane.add(object_detail_frame, weight=2)
+
+        self.metadata_object_tree = ttk.Treeview(
+            object_list_frame, columns=("uid", "name", "class", "type"), show="headings"
+        )
+        for column, heading, width, anchor in [
+            ("uid", "UID", 140, tk.W),
+            ("name", "Name", 180, tk.W),
+            ("class", "Class", 160, tk.W),
+            ("type", "Type", 160, tk.W),
+        ]:
+            self.metadata_object_tree.heading(column, text=heading)
+            self.metadata_object_tree.column(column, width=width, anchor=anchor, stretch=True)
+        objects_scroll = ttk.Scrollbar(object_list_frame, orient=tk.VERTICAL, command=self.metadata_object_tree.yview)
+        self.metadata_object_tree.configure(yscrollcommand=objects_scroll.set)
+        self.metadata_object_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        objects_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        if self.metadata.objects:
+            for info in self.metadata.objects:
+                self.metadata_object_tree.insert("", tk.END, values=(info.uid, info.name, info.class_name, info.type_name))
+        else:
+            self.metadata_object_tree.insert("", tk.END, values=("<none>", "", "", ""))
+
+        self.metadata_object_summary_var = tk.StringVar(value="Select an object to view details.")
+        ttk.Label(
+            object_detail_frame, textvariable=self.metadata_object_summary_var, wraplength=520, justify=tk.LEFT
+        ).pack(anchor=tk.W)
+
+        object_detail_notebook = ttk.Notebook(object_detail_frame)
+        object_detail_notebook.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+
+        object_properties_frame = ttk.Frame(object_detail_notebook, padding=4)
+        object_detail_notebook.add(object_properties_frame, text="Properties")
+        self.metadata_object_properties_tree = self._create_property_tree(object_properties_frame)
+
+        object_connections_frame = ttk.Frame(object_detail_notebook, padding=4)
+        object_detail_notebook.add(object_connections_frame, text="Connections")
+        self.metadata_object_connections_tree = ttk.Treeview(
+            object_connections_frame, columns=("direction", "name", "class", "uid"), show="headings"
+        )
+        for column, heading, width, anchor in [
+            ("direction", "Direction", 120, tk.W),
+            ("name", "Name", 200, tk.W),
+            ("class", "Class", 180, tk.W),
+            ("uid", "UID", 140, tk.W),
+        ]:
+            self.metadata_object_connections_tree.heading(column, text=heading)
+            self.metadata_object_connections_tree.column(column, width=width, anchor=anchor, stretch=True)
+        object_conn_scroll = ttk.Scrollbar(
+            object_connections_frame, orient=tk.VERTICAL, command=self.metadata_object_connections_tree.yview
+        )
+        self.metadata_object_connections_tree.configure(yscrollcommand=object_conn_scroll.set)
+        self.metadata_object_connections_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        object_conn_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.metadata_object_tree.bind("<<TreeviewSelect>>", self._on_metadata_object_select)
+        self._populate_metadata_object_details(None)
+
+
+
+    def _create_property_tree(self, parent: ttk.Frame) -> ttk.Treeview:
+        tree = ttk.Treeview(
+            parent,
+            columns=("category", "name", "type", "value", "flags"),
+            show="headings",
+        )
+        for column, heading, width, anchor in [
+            ("category", "Category", 110, tk.W),
+            ("name", "Name", 180, tk.W),
+            ("type", "Type", 140, tk.W),
+            ("value", "Value", 260, tk.W),
+            ("flags", "Flags", 160, tk.W),
+        ]:
+            tree.heading(column, text=heading)
+            tree.column(column, width=width, anchor=anchor, stretch=True)
+        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        return tree
+
+    def _populate_metadata_tree(
+        self, tree: ttk.Treeview, entries: List[FBXPropertyEntry], default_category: str
+    ) -> None:
+        rows = [
+            (default_category, entry.name, entry.type_name, entry.value, ", ".join(entry.flags))
+            for entry in entries
+        ]
+        if not rows:
+            rows.append((default_category, "<none>", "", "", ""))
+        self._refresh_tree(tree, rows)
+
+    def _refresh_tree(self, tree: ttk.Treeview, rows: List[Tuple[Any, ...]]) -> None:
+        tree.delete(*tree.get_children())
+        for row in rows:
+            tree.insert("", tk.END, values=row)
+
+    def _populate_metadata_object_details(self, info: Optional[SceneObjectInfo]) -> None:
+        if not hasattr(self, "metadata_object_properties_tree"):
+            return
+        if info is None:
+            self.metadata_object_summary_var.set("Select an object to view details.")
+            self._refresh_tree(self.metadata_object_properties_tree, [("FBX", "<none>", "", "", "")])
+            self._refresh_tree(self.metadata_object_connections_tree, [("", "<none>", "", "")])
+            return
+
+        summary = (
+            f"{info.name or '<unnamed>'} (UID {info.uid})\n"
+            f"Class: {info.class_name}\n"
+            f"Type: {info.type_name}"
+        )
+        self.metadata_object_summary_var.set(summary)
+
+        property_rows = [
+            ("FBX", entry.name, entry.type_name, entry.value, ", ".join(entry.flags))
+            for entry in info.properties
+        ]
+        if not property_rows:
+            property_rows.append(("FBX", "<none>", "", "", ""))
+        self._refresh_tree(self.metadata_object_properties_tree, property_rows)
+
+        connection_rows = [
+            (conn.direction, conn.target_name, conn.target_class, str(conn.target_uid))
+            for conn in (info.src_connections + info.dst_connections)
+        ]
+        if not connection_rows:
+            connection_rows.append(("", "<none>", "", ""))
+        self._refresh_tree(self.metadata_object_connections_tree, connection_rows)
+
+    def _on_metadata_object_select(self, _event) -> None:
+        if not hasattr(self, "metadata_object_tree"):
+            return
+        selection = self.metadata_object_tree.selection()
+        if not selection:
+            return
+        values = self.metadata_object_tree.item(selection[0], "values")
+        if not values:
+            self._populate_metadata_object_details(None)
+            return
+        try:
+            uid = int(values[0])
+        except (TypeError, ValueError):
+            self._populate_metadata_object_details(None)
+            return
+        info = self._object_metadata.get(uid)
+        self._populate_metadata_object_details(info)
+
+    def _update_node_metadata_views(self, node: SceneNode) -> None:
+        if not hasattr(self, "node_property_tree"):
+            return
+
+        rows: List[Tuple[Any, ...]] = []
+        info = self._object_metadata.get(node.uid) if node.uid is not None else None
+        if info is not None:
+            rows.extend(
+                ("FBX", entry.name, entry.type_name, entry.value, ", ".join(entry.flags))
+                for entry in info.properties
+            )
+        if node.properties:
+            rows.extend(("User", key, "UserProperty", value, "") for key, value in node.properties.items())
+        if not rows:
+            rows.append(("", "<none>", "", "", ""))
+        self._refresh_tree(self.node_property_tree, rows)
+
+        connection_rows: List[Tuple[Any, ...]] = []
+        if info is not None:
+            connection_rows.extend(
+                (conn.direction, conn.target_name, conn.target_class, str(conn.target_uid))
+                for conn in (info.src_connections + info.dst_connections)
+            )
+        if not connection_rows:
+            connection_rows.append(("", "<none>", "", ""))
+        self._refresh_tree(self.node_connection_tree, connection_rows)
 
     def _on_node_select(self, _event) -> None:
         if not hasattr(self, "node_tree"):
@@ -397,6 +745,8 @@ class DocumentPane:
             self._reparent_target_var.set("<none>")
         if self._reparent_target is node:
             self._reparent_target_var.set(node.name)
+
+        self._update_node_metadata_views(node)
         self._set_node_status("")
 
     def _get_selected_scene_node(self) -> Optional[SceneNode]:
@@ -419,6 +769,7 @@ class DocumentPane:
             return
 
         node.name = new_name
+        self._mark_scene_graph_dirty()
         if self._reparent_target is node:
             self._reparent_target_var.set(new_name)
 
@@ -438,6 +789,7 @@ class DocumentPane:
         node.attribute_type = new_type
         if node.attribute_class == "(NoAttribute)" and new_type in self._attribute_options:
             node.attribute_class = "Skeleton"
+        self._mark_scene_graph_dirty()
         self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Updated attribute to {new_type}.")
 
@@ -483,6 +835,7 @@ class DocumentPane:
             return
 
         setattr(node, attribute, vector)
+        self._mark_scene_graph_dirty()
         self.node_detail_vars[attribute].set(_vector_to_string(vector))
         var.set(_vector_to_string(vector))
 
@@ -520,6 +873,7 @@ class DocumentPane:
             properties={},
         )
         parent.children.append(new_node)
+        self._mark_scene_graph_dirty()
 
         self._new_node_name.set("")
         self._refresh_scene_tree(focus_node=new_node)
@@ -555,6 +909,7 @@ class DocumentPane:
             return
         parent.children.remove(node)
         target.children.append(node)
+        self._mark_scene_graph_dirty()
         self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Moved {node.name} under {target.name}.")
 
@@ -573,6 +928,7 @@ class DocumentPane:
             return
         parent.children.remove(node)
         grandparent.children.append(node)
+        self._mark_scene_graph_dirty()
         self._refresh_scene_tree(focus_uid=node.uid)
         self._set_node_status(f"Promoted {node.name} to be a child of {grandparent.name}.")
 
@@ -604,6 +960,7 @@ class DocumentPane:
                 f"Removed {node.name}; promoted its children under {parent.name}."
             )
 
+        self._mark_scene_graph_dirty()
         if self._reparent_target is node:
             self._reset_reparent_target()
 
@@ -662,6 +1019,11 @@ class DocumentPane:
 
     def _set_node_status(self, message: str) -> None:
         self._node_status_var.set(message)
+
+    def _mark_scene_graph_dirty(self) -> None:
+        """Flag the document so Save As knows edits were applied."""
+
+        self.document.scene_graph_dirty = True
 
     def update_document_path(self, new_path: str) -> None:
         self.document.path = str(new_path)
@@ -757,9 +1119,10 @@ class FBXAnalyzerApp:
 
         self.root = tk.Tk()
         self.root.title("FBX Analyzer")
-        self.root.geometry("1100x700")
+        self.root.geometry("1600x1000")
 
         self.status_var = tk.StringVar(value="Load FBX files to analyze.")
+        self._debug_mode = tk.BooleanVar(value=False)
 
         self._build_ui()
 
@@ -778,6 +1141,9 @@ class FBXAnalyzerApp:
 
         save_button = ttk.Button(toolbar, text="Save As...", command=self._on_save_as_clicked)
         save_button.pack(side=tk.LEFT, padx=(6, 0))
+
+        debug_toggle = ttk.Checkbutton(toolbar, text="Debug Mode", variable=self._debug_mode)
+        debug_toggle.pack(side=tk.LEFT, padx=(6, 0))
 
         close_button = ttk.Button(toolbar, text="Close Tab", command=self._on_close_clicked)
         close_button.pack(side=tk.LEFT, padx=(6, 0))
@@ -846,23 +1212,64 @@ class FBXAnalyzerApp:
         if not save_path:
             return
 
+        debug_log_path: Optional[Path] = None
         try:
-            save_scene_graph_as(pane.document.path, save_path, pane.document.scene_graph)
+            if self._debug_mode.get():
+                diagnostics = rebuild_scene_graph_as(
+                    pane.document.path,
+                    save_path,
+                    pane.document.scene_graph,
+                    diagnostics=SceneExportDiagnostics(),
+                )
+                debug_log_path = self._write_debug_diagnostics(Path(save_path), diagnostics)
+            else:
+                scene_graph = pane.document.scene_graph if pane.document.scene_graph_dirty else None
+                save_scene_graph_as(pane.document.path, save_path, scene_graph)
         except (FBXSDKNotAvailableError, FBXLoadError, FBXSaveError) as exc:
             messagebox.showerror("FBX Analyzer", str(exc), parent=self.root)
             return
 
+        pane.document.scene_graph_dirty = False
         pane.update_document_path(save_path)
-        self.status_var.set(f"Saved copy to {save_path}")
+        if self._debug_mode.get():
+            if debug_log_path is not None:
+                self.status_var.set(
+                    f"Saved debug copy to {save_path}; diagnostics -> {debug_log_path}"
+                )
+            else:
+                self.status_var.set(
+                    f"Saved debug copy to {save_path}; failed to write diagnostics log."
+                )
+        else:
+            self.status_var.set(f"Saved copy to {save_path}")
+
+    def _write_debug_diagnostics(
+        self, save_path: Path, diagnostics: SceneExportDiagnostics
+    ) -> Optional[Path]:
+        debug_path = save_path.with_suffix(save_path.suffix + ".debug.json")
+        try:
+            debug_path.write_text(
+                json.dumps(asdict(diagnostics), indent=2),
+                encoding="utf-8",
+            )
+            return debug_path
+        except Exception:
+            return None
 
     def _analyze_file(self, path: str) -> Optional[AnalyzedScene]:
         skeleton_inspector = SkeletonInspector()
         top_level_inspector = TopLevelInspector()
         scene_graph_inspector = SceneGraphInspector()
+        metadata_inspector = SceneMetadataInspector()
 
         try:
             with FBXAnalyzer(str(path)) as analyzer:
-                results = analyzer.run([skeleton_inspector, top_level_inspector, scene_graph_inspector])
+                results = analyzer.run([
+                    skeleton_inspector,
+                    top_level_inspector,
+                    scene_graph_inspector,
+                    metadata_inspector,
+                ])
         except (FBXSDKNotAvailableError, FBXLoadError) as exc:
             messagebox.showerror("FBX Analyzer", str(exc), parent=self.root)
             return None
@@ -870,12 +1277,14 @@ class FBXAnalyzerApp:
         skeletons = results.get(skeleton_inspector.id, [])
         top_level_nodes = results.get(top_level_inspector.id, []) or []
         scene_graph = results.get(scene_graph_inspector.id)
+        metadata = results.get(metadata_inspector.id) or SceneMetadata()
 
         return AnalyzedScene(
             path=str(path),
             skeletons=skeletons,
             scene_graph=scene_graph,
             top_level_nodes=top_level_nodes,
+            metadata=metadata,
         )
 
     def _add_document_tab(self, document: AnalyzedScene) -> None:
@@ -908,3 +1317,19 @@ def launch_skeleton_viewer(documents: List[AnalyzedScene]) -> None:
 
 def _vector_to_string(vector: Iterable[float]) -> str:
     return ", ".join(f"{component:.3f}" for component in vector)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
