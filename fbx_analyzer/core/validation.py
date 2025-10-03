@@ -208,7 +208,11 @@ class CanonicalSettings:
         fbx, _ = sdk.import_fbx_module()
         axis_system = getattr(fbx.FbxAxisSystem, "MayaYUp", None)
         system_unit = getattr(fbx.FbxSystemUnit, "cm", None)
-        time_mode = getattr(fbx.FbxTime, "eFrames30")
+        time_mode = getattr(
+            fbx.FbxTime,
+            "eFrames30",
+            getattr(fbx.FbxTime, "eDefaultMode", 0),
+        )
         frame_rate = 30.0
         return cls(
             axis_system=axis_system,
