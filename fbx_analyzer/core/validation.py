@@ -352,7 +352,27 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
             )
 
     time_span = fbx_module.FbxTimeSpan()
-    globals_settings.GetTimelineDefaultTimeSpan(time_span)
+    timeline_getter = getattr(globals_settings, "GetTimelineDefaultTimeSpan", None)
+    if callable(timeline_getter):
+        try:
+            result = timeline_getter(time_span)
+            # Some SDK variants return the span instead of filling the arg; prefer it.
+            if isinstance(result, fbx_module.FbxTimeSpan):
+                time_span = result
+        except TypeError:
+            # Older python bindings expose the no-arg overload returning the span.
+            result = timeline_getter()
+            if isinstance(result, fbx_module.FbxTimeSpan):
+                time_span = result
+    else:  # pragma: no cover - defensive fallback
+        report.add_issue(
+            "WARN",
+            "Timeline default time span accessor unavailable; unable to validate span.",
+            code="globals.time_span_unknown",
+            object_path="<globals>",
+        )
+        return report
+
     start = time_span.GetStart().Get()
     stop = time_span.GetStop().Get()
     if start >= stop:
