@@ -903,9 +903,51 @@ def AutoRepair(
     if needs_bind_pose:
         pose = fbx_module.FbxPose.Create(scene, "AutoBindPose")
         pose.SetIsBindPose(True)
+        def _to_fbx_matrix(fbx_mod, value):
+            fbx_matrix_type = getattr(fbx_mod, "FbxMatrix", None)
+            if fbx_matrix_type is None:
+                return None
+            if isinstance(value, fbx_matrix_type):
+                return value
+            fbx_amatrix_type = getattr(fbx_mod, "FbxAMatrix", None)
+            if fbx_amatrix_type is not None and isinstance(value, fbx_amatrix_type):
+                try:
+                    return fbx_matrix_type(value)
+                except TypeError:
+                    try:
+                        matrix_instance = fbx_matrix_type()
+                    except TypeError:
+                        return None
+                    set_method = getattr(matrix_instance, "Set", None)
+                    if callable(set_method):
+                        for row in range(4):
+                            for col in range(4):
+                                try:
+                                    set_method(row, col, value.Get(row, col))
+                                except Exception:
+                                    return None
+                        return matrix_instance
+                    for row in range(4):
+                        for col in range(4):
+                            try:
+                                matrix_instance[row][col] = value.Get(row, col)
+                            except Exception:
+                                return None
+                    return matrix_instance
+            return None
+
         for node in iter_nodes(root):
             matrix = node.EvaluateGlobalTransform()
-            pose.Add(node, matrix)
+            matrix_value = _to_fbx_matrix(fbx_module, matrix)
+            if matrix_value is None:
+                fallback_ctor = getattr(fbx_module, "FbxMatrix", None)
+                if fallback_ctor is None:
+                    continue
+                try:
+                    matrix_value = fallback_ctor()
+                except TypeError:
+                    continue
+            pose.Add(node, matrix_value)
         report.repairs.append({"object": "<poses>", "action": "Bind pose reconstructed."})
         if skin_category is not None:
             for issue in skin_category.issues:
