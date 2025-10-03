@@ -199,7 +199,7 @@ class CanonicalSettings:
 
     axis_system: Any
     system_unit: Any
-    time_mode: int
+    time_mode: Any
     frame_rate: float
     time_span: Optional[Tuple[int, int]] = None
 
@@ -208,12 +208,30 @@ class CanonicalSettings:
         fbx, _ = sdk.import_fbx_module()
         axis_system = getattr(fbx.FbxAxisSystem, "MayaYUp", None)
         system_unit = getattr(fbx.FbxSystemUnit, "cm", None)
-        time_mode = getattr(
-            fbx.FbxTime,
-            "eFrames30",
-            getattr(fbx.FbxTime, "eDefaultMode", 0),
-        )
+
+        time_mode = None
+        time_class = getattr(fbx, "FbxTime", None)
+        time_enum = getattr(fbx, "FbxTimeMode", None)
+
+        if time_class is not None:
+            time_mode = getattr(time_class, "eFrames30", None)
+        if time_mode is None and time_enum is not None:
+            time_mode = getattr(time_enum, "eFrames30", None)
+        if time_mode is None and time_class is not None:
+            time_mode = getattr(time_class, "eDefaultMode", None)
+        if time_mode is None and time_enum is not None:
+            time_mode = getattr(time_enum, "eDefaultMode", None)
+
         frame_rate = 30.0
+        if (
+            time_class is not None
+            and hasattr(time_class, "GetFrameRate")
+            and time_mode is not None
+        ):
+            try:
+                frame_rate = float(time_class.GetFrameRate(time_mode))
+            except Exception:  # pragma: no cover - defensive fallback
+                frame_rate = 30.0
         return cls(
             axis_system=axis_system,
             system_unit=system_unit,
@@ -240,12 +258,20 @@ class SceneValidator:
     def validate(self) -> ValidationReport:
         report = ValidationReport()
         if self.canonical.time_span is None:
-            time_span = self.fbx.FbxTimeSpan()
-            self.scene.GetGlobalSettings().GetTimelineDefaultTimeSpan(time_span)
-            start = time_span.GetStart().Get()
-            stop = time_span.GetStop().Get()
-            if start < stop:
-                self.canonical.time_span = (start, stop)
+            global_settings = self.scene.GetGlobalSettings()
+            get_default_span = getattr(global_settings, "GetTimelineDefaultTimeSpan", None)
+            if callable(get_default_span):
+                time_span = None
+                try:
+                    time_span = get_default_span()
+                except TypeError:
+                    time_span = self.fbx.FbxTimeSpan()
+                    get_default_span(time_span)
+                if time_span is not None:
+                    start = time_span.GetStart().Get()
+                    stop = time_span.GetStop().Get()
+                    if start < stop:
+                        self.canonical.time_span = (start, stop)
         report.categories["globals"] = ValidateGlobals(self.scene, self.canonical, self.fbx)
         report.categories["nodes"] = ValidateNodesAndTransforms(self.scene, self.fbx)
         geometry_report, mesh_metrics = ValidateGeometry(self.scene, self.fbx)
@@ -312,19 +338,59 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
             object_path="<globals>",
         )
 
-    custom_rate = globals_settings.GetCustomFrameRate()
-    if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom") and not math.isclose(
-        custom_rate, canonical.frame_rate, rel_tol=1e-6
-    ):
-        report.add_issue(
-            "FAIL",
-            "Custom frame rate does not match canonical export configuration.",
-            code="globals.frame_rate",
-            object_path="<globals>",
-        )
+    custom_rate = None
+    get_custom_rate = getattr(globals_settings, "GetCustomFrameRate", None)
+    if callable(get_custom_rate):
+        try:
+            custom_rate = get_custom_rate()
+        except TypeError:  # pragma: no cover - defensive for old SDKs
+            # Some SDK builds expose GetCustomFrameRate with property semantics;
+            # fall back to reading the attribute directly if invocation fails.
+            custom_rate = getattr(globals_settings, "CustomFrameRate", None)
+    elif hasattr(fbx_module.FbxTime, "GetFrameRate"):
+        try:
+            custom_rate = fbx_module.FbxTime.GetFrameRate(time_mode)
+        except Exception:  # pragma: no cover - defensive
+            custom_rate = None
+
+    if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom", None):
+        if custom_rate is None:
+            report.add_issue(
+                "WARN",
+                "Custom frame rate unavailable; unable to verify.",
+                code="globals.frame_rate_unknown",
+                object_path="<globals>",
+            )
+        elif not math.isclose(custom_rate, canonical.frame_rate, rel_tol=1e-6):
+            report.add_issue(
+                "FAIL",
+                "Custom frame rate does not match canonical export configuration.",
+                code="globals.frame_rate",
+                object_path="<globals>",
+            )
 
     time_span = fbx_module.FbxTimeSpan()
-    globals_settings.GetTimelineDefaultTimeSpan(time_span)
+    timeline_getter = getattr(globals_settings, "GetTimelineDefaultTimeSpan", None)
+    if callable(timeline_getter):
+        try:
+            result = timeline_getter(time_span)
+            # Some SDK variants return the span instead of filling the arg; prefer it.
+            if isinstance(result, fbx_module.FbxTimeSpan):
+                time_span = result
+        except TypeError:
+            # Older python bindings expose the no-arg overload returning the span.
+            result = timeline_getter()
+            if isinstance(result, fbx_module.FbxTimeSpan):
+                time_span = result
+    else:  # pragma: no cover - defensive fallback
+        report.add_issue(
+            "WARN",
+            "Timeline default time span accessor unavailable; unable to validate span.",
+            code="globals.time_span_unknown",
+            object_path="<globals>",
+        )
+        return report
+
     start = time_span.GetStart().Get()
     stop = time_span.GetStop().Get()
     if start >= stop:
@@ -716,18 +782,55 @@ def AutoRepair(
                 {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
             )
         elif issue.code == "globals.time_mode" and canonical.time_mode is not None:
-            globals_settings.SetTimeMode(canonical.time_mode)
-            if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom"):
-                globals_settings.SetCustomFrameRate(canonical.frame_rate)
+            try:
+                globals_settings.SetTimeMode(canonical.time_mode)
+            except TypeError:
+                # Some SDKs expect an explicit FbxTime.EMode; attempt to coerce
+                coerced_mode = None
+                time_class = getattr(fbx_module, "FbxTime", None)
+                mode_enum = getattr(time_class, "EMode", None) if time_class else None
+                if mode_enum is not None and isinstance(canonical.time_mode, int):
+                    try:
+                        coerced_mode = mode_enum(canonical.time_mode)
+                    except Exception:  # pragma: no cover - defensive fallback
+                        coerced_mode = None
+                if coerced_mode is not None:
+                    globals_settings.SetTimeMode(coerced_mode)
+                else:  # pragma: no cover - defensive fallback
+                    issue.fix_applied = (
+                        "Unable to reset time mode due to incompatible SDK signature."
+                    )
+                    report.repairs.append(
+                        {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
+                    )
+                    continue
+
+            if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom", None):
+                set_custom_rate = getattr(globals_settings, "SetCustomFrameRate", None)
+                if callable(set_custom_rate):
+                    set_custom_rate(canonical.frame_rate)
+                else:  # pragma: no cover - defensive fallback
+                    issue.fix_applied = (
+                        "Time mode set, but custom frame-rate setter unavailable on this SDK."
+                    )
+                    report.repairs.append(
+                        {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
+                    )
+                    continue
+
             issue.fix_applied = "Time mode reset to canonical mode."
             report.repairs.append(
                 {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
             )
         elif issue.code == "globals.frame_rate" and canonical.time_mode == getattr(
-            fbx_module.FbxTime, "eCustom"
+            fbx_module.FbxTime, "eCustom", None
         ):
-            globals_settings.SetCustomFrameRate(canonical.frame_rate)
-            issue.fix_applied = "Custom frame rate synced to canonical value."
+            set_custom_rate = getattr(globals_settings, "SetCustomFrameRate", None)
+            if callable(set_custom_rate):
+                set_custom_rate(canonical.frame_rate)
+                issue.fix_applied = "Custom frame rate synced to canonical value."
+            else:  # pragma: no cover - defensive fallback
+                issue.fix_applied = "Unable to set custom frame rate; setter unavailable."
             report.repairs.append(
                 {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
             )
@@ -800,9 +903,51 @@ def AutoRepair(
     if needs_bind_pose:
         pose = fbx_module.FbxPose.Create(scene, "AutoBindPose")
         pose.SetIsBindPose(True)
+        def _to_fbx_matrix(fbx_mod, value):
+            fbx_matrix_type = getattr(fbx_mod, "FbxMatrix", None)
+            if fbx_matrix_type is None:
+                return None
+            if isinstance(value, fbx_matrix_type):
+                return value
+            fbx_amatrix_type = getattr(fbx_mod, "FbxAMatrix", None)
+            if fbx_amatrix_type is not None and isinstance(value, fbx_amatrix_type):
+                try:
+                    return fbx_matrix_type(value)
+                except TypeError:
+                    try:
+                        matrix_instance = fbx_matrix_type()
+                    except TypeError:
+                        return None
+                    set_method = getattr(matrix_instance, "Set", None)
+                    if callable(set_method):
+                        for row in range(4):
+                            for col in range(4):
+                                try:
+                                    set_method(row, col, value.Get(row, col))
+                                except Exception:
+                                    return None
+                        return matrix_instance
+                    for row in range(4):
+                        for col in range(4):
+                            try:
+                                matrix_instance[row][col] = value.Get(row, col)
+                            except Exception:
+                                return None
+                    return matrix_instance
+            return None
+
         for node in iter_nodes(root):
             matrix = node.EvaluateGlobalTransform()
-            pose.Add(node, matrix)
+            matrix_value = _to_fbx_matrix(fbx_module, matrix)
+            if matrix_value is None:
+                fallback_ctor = getattr(fbx_module, "FbxMatrix", None)
+                if fallback_ctor is None:
+                    continue
+                try:
+                    matrix_value = fallback_ctor()
+                except TypeError:
+                    continue
+            pose.Add(node, matrix_value)
         report.repairs.append({"object": "<poses>", "action": "Bind pose reconstructed."})
         if skin_category is not None:
             for issue in skin_category.issues:
