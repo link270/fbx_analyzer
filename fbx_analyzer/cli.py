@@ -10,8 +10,8 @@ from typing import Any, Dict, Iterable, Optional
 from .core import FBXAnalyzer
 from .core.exceptions import FBXLoadError, FBXSDKNotAvailableError
 from .gui import ask_for_fbx_file, launch_skeleton_viewer
-from .inspectors import SceneGraphInspector, SkeletonInspector, TopLevelInspector
-from .models import AnalyzedScene
+from .inspectors import SceneGraphInspector, SceneMetadataInspector, SkeletonInspector, TopLevelInspector
+from .models import AnalyzedScene, SceneMetadata
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,10 +51,16 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     skeleton_inspector = SkeletonInspector()
     top_level_inspector = TopLevelInspector()
     scene_graph_inspector = SceneGraphInspector()
+    metadata_inspector = SceneMetadataInspector()
 
     try:
         with FBXAnalyzer(str(path)) as analyzer:
-            results = analyzer.run([skeleton_inspector, top_level_inspector, scene_graph_inspector])
+            results = analyzer.run([
+                skeleton_inspector,
+                top_level_inspector,
+                scene_graph_inspector,
+                metadata_inspector,
+            ])
     except FBXSDKNotAvailableError as exc:
         parser.error(str(exc))
     except FBXLoadError as exc:
@@ -63,12 +69,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     skeletons = results.get(skeleton_inspector.id, [])
     top_level_nodes = results.get(top_level_inspector.id, [])
     scene_graph = results.get(scene_graph_inspector.id)
+    metadata = results.get(metadata_inspector.id) or SceneMetadata()
 
     document = AnalyzedScene(
         path=str(path),
         skeletons=skeletons,
         scene_graph=scene_graph,
         top_level_nodes=top_level_nodes or [],
+        metadata=metadata,
     )
 
     _print_top_level_summary(document.top_level_nodes, title=Path(document.path).name)
@@ -112,3 +120,6 @@ def _print_top_level_summary(entries: Iterable[Dict[str, Any]], *, title: str) -
 
 if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())
+
+
+

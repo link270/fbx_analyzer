@@ -283,15 +283,22 @@ def _build_property_entry(fbx_module, prop) -> FBXPropertyEntry:
 
 
 def _collect_property_flags(fbx_module, prop) -> List[str]:
-    flag_labels = [
-        (fbx_module.FbxPropertyFlags.eAnimatable, "Animatable"),
-        (fbx_module.FbxPropertyFlags.eAnimated, "Animated"),
-        (fbx_module.FbxPropertyFlags.eUserDefined, "UserDefined"),
-        (fbx_module.FbxPropertyFlags.eMutable, "Mutable"),
-        (fbx_module.FbxPropertyFlags.eImported, "Imported"),
-    ]
     labels: List[str] = []
-    for flag, label in flag_labels:
+    property_flags = getattr(fbx_module, "FbxPropertyFlags", None)
+    if property_flags is None:
+        return labels
+
+    flag_names = [
+        ("eAnimatable", "Animatable"),
+        ("eAnimated", "Animated"),
+        ("eUserDefined", "UserDefined"),
+        ("eMutable", "Mutable"),
+        ("eImported", "Imported"),
+    ]
+    for attr_name, label in flag_names:
+        flag = getattr(property_flags, attr_name, None)
+        if flag is None:
+            continue
         try:
             if prop.GetFlag(flag):
                 labels.append(label)

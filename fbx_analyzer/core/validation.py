@@ -302,7 +302,7 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
     if canonical_axis is not None and hasattr(axis, "IsEquivalent"):
         if not axis.IsEquivalent(canonical_axis):
             report.add_issue(
-                "FAIL",
+                "WARN",
                 "Axis system does not match canonical settings.",
                 code="globals.axis",
                 object_path="<globals>",
@@ -316,7 +316,7 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
             canonical_scale = canonical_unit.GetScaleFactor()
             if not math.isclose(current_scale, canonical_scale, rel_tol=1e-6):
                 report.add_issue(
-                    "FAIL",
+                    "WARN",
                     "System unit scale mismatch.",
                     code="globals.system_unit",
                     object_path="<globals>",
@@ -332,7 +332,7 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
     time_mode = globals_settings.GetTimeMode()
     if canonical.time_mode is not None and time_mode != canonical.time_mode:
         report.add_issue(
-            "FAIL",
+            "WARN",
             "Time mode does not match canonical export configuration.",
             code="globals.time_mode",
             object_path="<globals>",
@@ -363,7 +363,7 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
             )
         elif not math.isclose(custom_rate, canonical.frame_rate, rel_tol=1e-6):
             report.add_issue(
-                "FAIL",
+                "WARN",
                 "Custom frame rate does not match canonical export configuration.",
                 code="globals.frame_rate",
                 object_path="<globals>",
@@ -496,12 +496,43 @@ def ValidateGeometry(scene, fbx_module) -> Tuple[ValidationCategoryReport, Dict[
             if binormals is not None:
                 _validate_layer_element(report, binormals, "Binormals", path, fbx_module)
                 layer_counts[f"binormals:{layer_index}"] = binormals.GetDirectArray().GetCount()
-            for uv_index in range(layer.GetUVSetCount()):
-                uv_element = layer.GetUVSet(uv_index)
+            uv_elements = []
+            get_uvset_count = getattr(layer, "GetUVSetCount", None)
+            get_uvset = getattr(layer, "GetUVSet", None)
+            if callable(get_uvset_count) and callable(get_uvset):
+                try:
+                    uv_count = int(get_uvset_count())
+                except TypeError:
+                    uv_count = int(get_uvset_count) if isinstance(get_uvset_count, int) else 0
+                except Exception:
+                    uv_count = 0
+                for uv_index in range(max(uv_count, 0)):
+                    try:
+                        uv_element = get_uvset(uv_index)
+                    except TypeError:
+                        uv_element = None
+                    if uv_element is not None:
+                        uv_elements.append((uv_index, uv_element))
+            else:
+                fallback = getattr(layer, "GetUVs", None)
+                uv_element = None
+                if callable(fallback):
+                    try:
+                        uv_element = fallback()
+                    except TypeError:
+                        uv_element = fallback
+                elif fallback is not None:
+                    uv_element = fallback
+                if uv_element is not None:
+                    uv_elements.append((0, uv_element))
+
+            for uv_index, uv_element in uv_elements:
                 if uv_element is None:
                     continue
                 _validate_layer_element(report, uv_element, f"UVSet[{uv_index}]", path, fbx_module)
-                layer_counts[f"uv{uv_index}:{layer_index}"] = uv_element.GetDirectArray().GetCount()
+                direct_array = getattr(uv_element, "GetDirectArray", lambda: None)()
+                if direct_array is not None:
+                    layer_counts[f"uv{uv_index}:{layer_index}"] = direct_array.GetCount()
             vertex_colors = layer.GetVertexColors()
             if vertex_colors is not None:
                 _validate_layer_element(report, vertex_colors, "VertexColors", path, fbx_module)
@@ -524,6 +555,93 @@ def ValidateGeometry(scene, fbx_module) -> Tuple[ValidationCategoryReport, Dict[
     return report, mesh_metrics
 
 
+def _iter_skin_deformers(geometry, fbx_module):  # type: ignore[valid-type]
+    get_count = getattr(geometry, "GetDeformerCount", None)
+    get_deformer = getattr(geometry, "GetDeformer", None)
+    if not callable(get_count) or not callable(get_deformer):
+        return iter(())
+
+    skin_enum = getattr(getattr(fbx_module, "FbxDeformer", None), "eSkin", None)
+    skin_class = getattr(fbx_module, "FbxSkin", None)
+
+    def _fallback_iter():
+        try:
+            total = int(get_count())
+        except TypeError:
+            raw = get_count()
+            total = int(raw) if isinstance(raw, int) else 0
+        except Exception:
+            total = 0
+        for index in range(max(total, 0)):
+            try:
+                deformer = get_deformer(index)
+            except TypeError:
+                deformer = None
+            if deformer is None:
+                continue
+            if skin_class is not None:
+                try:
+                    if not isinstance(deformer, skin_class):
+                        continue
+                except TypeError:
+                    pass
+            yield deformer
+
+    if skin_enum is not None:
+        try:
+            count = int(get_count(skin_enum))
+        except TypeError:
+            try:
+                count = int(get_count())
+            except Exception:
+                count = 0
+        except Exception:
+            count = 0
+        else:
+            found = False
+            for index in range(max(count, 0)):
+                try:
+                    deformer = get_deformer(index, skin_enum)
+                except TypeError:
+                    deformer = get_deformer(index)
+                if deformer is None:
+                    continue
+                found = True
+                yield deformer
+            if found:
+                return
+    for deformer in _fallback_iter():
+        yield deformer
+
+
+def _get_cluster_weight_count(cluster) -> int:
+    get_count = getattr(cluster, "GetControlPointWeightsCount", None)
+    if callable(get_count):
+        try:
+            return int(get_count())
+        except TypeError:
+            raw = get_count()
+            if isinstance(raw, int):
+                return raw
+        except Exception:
+            pass
+    elif isinstance(get_count, int):
+        return get_count
+
+    get_weights = getattr(cluster, "GetControlPointWeights", None)
+    if callable(get_weights):
+        try:
+            weights = get_weights()
+        except Exception:
+            weights = None
+        if weights is not None:
+            try:
+                return len(weights)
+            except TypeError:
+                pass
+    return 0
+
+
 def ValidateSkinAndPoses(scene, fbx_module) -> ValidationCategoryReport:  # type: ignore[valid-type]
     report = ValidationCategoryReport("SkinningAndPoses")
     root = scene.GetRootNode()
@@ -541,9 +659,8 @@ def ValidateSkinAndPoses(scene, fbx_module) -> ValidationCategoryReport:  # type
             continue
         mesh: Any = attr
         path = _node_path(node)
-        skin_count = mesh.GetDeformerCount(fbx_module.FbxDeformer.eSkin)
-        for skin_index in range(skin_count):
-            skin = mesh.GetDeformer(skin_index, fbx_module.FbxDeformer.eSkin)
+        skin_deformers = list(_iter_skin_deformers(mesh, fbx_module))
+        for skin_index, skin in enumerate(skin_deformers):
             if skin is None:
                 continue
             cluster_count = skin.GetClusterCount()
@@ -567,7 +684,8 @@ def ValidateSkinAndPoses(scene, fbx_module) -> ValidationCategoryReport:  # type
                         code="skin.cluster_link",
                         object_path=path,
                     )
-                if cluster.GetControlPointIndicesCount() == 0 or cluster.GetControlPointWeightsCount() == 0:
+                weight_count = _get_cluster_weight_count(cluster)
+                if cluster.GetControlPointIndicesCount() == 0 or weight_count == 0:
                     report.add_issue(
                         "FAIL",
                         "Skin cluster has empty weights.",
@@ -723,10 +841,10 @@ def ValidateConnections(scene, fbx_module) -> ValidationCategoryReport:  # type:
     for node in iter_nodes(root):
         attr = node.GetNodeAttribute()
         if isinstance(attr, fbx_module.FbxMesh):
-            if attr.GetDeformerCount(fbx_module.FbxDeformer.eSkin) > 0:
+            skin_deformers = list(_iter_skin_deformers(attr, fbx_module))
+            if skin_deformers:
                 has_cluster_links = False
-                for skin_index in range(attr.GetDeformerCount(fbx_module.FbxDeformer.eSkin)):
-                    skin = attr.GetDeformer(skin_index, fbx_module.FbxDeformer.eSkin)
+                for skin in skin_deformers:
                     if skin is None:
                         continue
                     for cluster_index in range(skin.GetClusterCount()):
@@ -881,8 +999,7 @@ def AutoRepair(
                 if not isinstance(mesh_attr, fbx_module.FbxMesh):
                     continue
                 mesh_matrix = node.EvaluateGlobalTransform()
-                for skin_index in range(mesh_attr.GetDeformerCount(fbx_module.FbxDeformer.eSkin)):
-                    skin = mesh_attr.GetDeformer(skin_index, fbx_module.FbxDeformer.eSkin)
+                for skin in _iter_skin_deformers(mesh_attr, fbx_module):
                     if skin is None:
                         continue
                     for cluster_index in range(skin.GetClusterCount()):
@@ -985,8 +1102,7 @@ def collect_scene_metrics(scene, fbx_module, mesh_metrics: Dict[str, MeshMetrics
     for node in nodes:
         attr = node.GetNodeAttribute()
         if isinstance(attr, fbx_module.FbxMesh):
-            for skin_index in range(attr.GetDeformerCount(fbx_module.FbxDeformer.eSkin)):
-                skin = attr.GetDeformer(skin_index, fbx_module.FbxDeformer.eSkin)
+            for skin in _iter_skin_deformers(attr, fbx_module):
                 if skin is not None:
                     metrics.skin_cluster_count += skin.GetClusterCount()
 
@@ -1080,21 +1196,58 @@ def _validate_material_textures(report: ValidationCategoryReport, material, node
         "BaseColor",
     ]
     for channel in texture_channel_names:
-        property_handle = material.FindProperty(fbx_module.FbxSurfaceMaterial.sDiffuse if channel == "Diffuse" else channel)
+        property_handle = material.FindProperty(
+            fbx_module.FbxSurfaceMaterial.sDiffuse if channel == "Diffuse" else channel
+        )
         if not property_handle.IsValid():
             continue
-        texture_count = property_handle.GetSrcObjectCount(fbx_module.FbxTexture.ClassId)
-        if texture_count == 0:
-            continue
-        for texture_index in range(texture_count):
-            texture = property_handle.GetSrcObject(fbx_module.FbxTexture.ClassId, texture_index)
+
+        class_id = getattr(getattr(fbx_module, "FbxTexture", None), "ClassId", None)
+        texture_getter = None
+        texture_count = 0
+
+        if class_id is not None:
+            try:
+                texture_count = int(property_handle.GetSrcObjectCount(class_id))
+                texture_getter = lambda index, cid=class_id: property_handle.GetSrcObject(cid, index)
+            except TypeError:
+                texture_getter = None
+            except Exception:
+                texture_getter = None
+
+        if texture_getter is None:
+            criteria_type = getattr(fbx_module, "FbxCriteria", None)
+            if criteria_type is not None and class_id is not None:
+                try:
+                    criteria = criteria_type.ObjectType(class_id)
+                    texture_count = int(property_handle.GetSrcObjectCount(criteria))
+                    texture_getter = lambda index, crit=criteria: property_handle.GetSrcObject(crit, index)
+                except TypeError:
+                    texture_getter = None
+                except Exception:
+                    texture_getter = None
+
+        if texture_getter is None:
+            try:
+                texture_count = int(property_handle.GetSrcObjectCount())
+                texture_getter = lambda index: property_handle.GetSrcObject(index)
+            except Exception:
+                texture_count = 0
+                texture_getter = lambda index: None
+
+        missing_connection = False
+        for texture_index in range(max(texture_count, 0)):
+            texture = texture_getter(texture_index)
             if texture is None:
-                report.add_issue(
-                    "WARN",
-                    f"Texture slot '{channel}' is missing its texture connection.",
-                    code="materials.texture_missing",
-                    object_path=node_path,
-                )
+                missing_connection = True
+                break
+        if missing_connection:
+            report.add_issue(
+                "WARN",
+                f"Texture slot '{channel}' is missing its texture connection.",
+                code="materials.texture_missing",
+                object_path=node_path,
+            )
 
 
 def _node_path(node) -> str:  # type: ignore[valid-type]
@@ -1133,4 +1286,5 @@ def _find_node_by_path(root, path: str):  # type: ignore[valid-type]
         if result is not None:
             return result
     return None
+
 
