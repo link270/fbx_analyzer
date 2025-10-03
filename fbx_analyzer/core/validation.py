@@ -240,12 +240,20 @@ class SceneValidator:
     def validate(self) -> ValidationReport:
         report = ValidationReport()
         if self.canonical.time_span is None:
-            time_span = self.fbx.FbxTimeSpan()
-            self.scene.GetGlobalSettings().GetTimelineDefaultTimeSpan(time_span)
-            start = time_span.GetStart().Get()
-            stop = time_span.GetStop().Get()
-            if start < stop:
-                self.canonical.time_span = (start, stop)
+            global_settings = self.scene.GetGlobalSettings()
+            get_default_span = getattr(global_settings, "GetTimelineDefaultTimeSpan", None)
+            if callable(get_default_span):
+                time_span = None
+                try:
+                    time_span = get_default_span()
+                except TypeError:
+                    time_span = self.fbx.FbxTimeSpan()
+                    get_default_span(time_span)
+                if time_span is not None:
+                    start = time_span.GetStart().Get()
+                    stop = time_span.GetStop().Get()
+                    if start < stop:
+                        self.canonical.time_span = (start, stop)
         report.categories["globals"] = ValidateGlobals(self.scene, self.canonical, self.fbx)
         report.categories["nodes"] = ValidateNodesAndTransforms(self.scene, self.fbx)
         geometry_report, mesh_metrics = ValidateGeometry(self.scene, self.fbx)
