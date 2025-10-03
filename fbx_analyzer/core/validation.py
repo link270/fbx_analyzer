@@ -199,7 +199,7 @@ class CanonicalSettings:
 
     axis_system: Any
     system_unit: Any
-    time_mode: int
+    time_mode: Any
     frame_rate: float
     time_span: Optional[Tuple[int, int]] = None
 
@@ -208,12 +208,30 @@ class CanonicalSettings:
         fbx, _ = sdk.import_fbx_module()
         axis_system = getattr(fbx.FbxAxisSystem, "MayaYUp", None)
         system_unit = getattr(fbx.FbxSystemUnit, "cm", None)
-        time_mode = getattr(fbx.FbxTime, "eFrames30", None)
-        if time_mode is None:
-            time_mode = getattr(getattr(fbx, "FbxTimeMode", object), "eFrames30", None)
-        if time_mode is None:
-            time_mode = getattr(fbx.FbxTime, "eDefaultMode", 0)
+
+        time_mode = None
+        time_class = getattr(fbx, "FbxTime", None)
+        time_enum = getattr(fbx, "FbxTimeMode", None)
+
+        if time_class is not None:
+            time_mode = getattr(time_class, "eFrames30", None)
+        if time_mode is None and time_enum is not None:
+            time_mode = getattr(time_enum, "eFrames30", None)
+        if time_mode is None and time_class is not None:
+            time_mode = getattr(time_class, "eDefaultMode", None)
+        if time_mode is None and time_enum is not None:
+            time_mode = getattr(time_enum, "eDefaultMode", None)
+
         frame_rate = 30.0
+        if (
+            time_class is not None
+            and hasattr(time_class, "GetFrameRate")
+            and time_mode is not None
+        ):
+            try:
+                frame_rate = float(time_class.GetFrameRate(time_mode))
+            except Exception:  # pragma: no cover - defensive fallback
+                frame_rate = 30.0
         return cls(
             axis_system=axis_system,
             system_unit=system_unit,
@@ -764,18 +782,55 @@ def AutoRepair(
                 {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
             )
         elif issue.code == "globals.time_mode" and canonical.time_mode is not None:
-            globals_settings.SetTimeMode(canonical.time_mode)
-            if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom"):
-                globals_settings.SetCustomFrameRate(canonical.frame_rate)
+            try:
+                globals_settings.SetTimeMode(canonical.time_mode)
+            except TypeError:
+                # Some SDKs expect an explicit FbxTime.EMode; attempt to coerce
+                coerced_mode = None
+                time_class = getattr(fbx_module, "FbxTime", None)
+                mode_enum = getattr(time_class, "EMode", None) if time_class else None
+                if mode_enum is not None and isinstance(canonical.time_mode, int):
+                    try:
+                        coerced_mode = mode_enum(canonical.time_mode)
+                    except Exception:  # pragma: no cover - defensive fallback
+                        coerced_mode = None
+                if coerced_mode is not None:
+                    globals_settings.SetTimeMode(coerced_mode)
+                else:  # pragma: no cover - defensive fallback
+                    issue.fix_applied = (
+                        "Unable to reset time mode due to incompatible SDK signature."
+                    )
+                    report.repairs.append(
+                        {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
+                    )
+                    continue
+
+            if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom", None):
+                set_custom_rate = getattr(globals_settings, "SetCustomFrameRate", None)
+                if callable(set_custom_rate):
+                    set_custom_rate(canonical.frame_rate)
+                else:  # pragma: no cover - defensive fallback
+                    issue.fix_applied = (
+                        "Time mode set, but custom frame-rate setter unavailable on this SDK."
+                    )
+                    report.repairs.append(
+                        {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
+                    )
+                    continue
+
             issue.fix_applied = "Time mode reset to canonical mode."
             report.repairs.append(
                 {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
             )
         elif issue.code == "globals.frame_rate" and canonical.time_mode == getattr(
-            fbx_module.FbxTime, "eCustom"
+            fbx_module.FbxTime, "eCustom", None
         ):
-            globals_settings.SetCustomFrameRate(canonical.frame_rate)
-            issue.fix_applied = "Custom frame rate synced to canonical value."
+            set_custom_rate = getattr(globals_settings, "SetCustomFrameRate", None)
+            if callable(set_custom_rate):
+                set_custom_rate(canonical.frame_rate)
+                issue.fix_applied = "Custom frame rate synced to canonical value."
+            else:  # pragma: no cover - defensive fallback
+                issue.fix_applied = "Unable to set custom frame rate; setter unavailable."
             report.repairs.append(
                 {"object": issue.object_path or "<globals>", "action": issue.fix_applied}
             )
