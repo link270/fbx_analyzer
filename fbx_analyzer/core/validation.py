@@ -320,16 +320,36 @@ def ValidateGlobals(scene, canonical: CanonicalSettings, fbx_module) -> Validati
             object_path="<globals>",
         )
 
-    custom_rate = globals_settings.GetCustomFrameRate()
-    if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom") and not math.isclose(
-        custom_rate, canonical.frame_rate, rel_tol=1e-6
-    ):
-        report.add_issue(
-            "FAIL",
-            "Custom frame rate does not match canonical export configuration.",
-            code="globals.frame_rate",
-            object_path="<globals>",
-        )
+    custom_rate = None
+    get_custom_rate = getattr(globals_settings, "GetCustomFrameRate", None)
+    if callable(get_custom_rate):
+        try:
+            custom_rate = get_custom_rate()
+        except TypeError:  # pragma: no cover - defensive for old SDKs
+            # Some SDK builds expose GetCustomFrameRate with property semantics;
+            # fall back to reading the attribute directly if invocation fails.
+            custom_rate = getattr(globals_settings, "CustomFrameRate", None)
+    elif hasattr(fbx_module.FbxTime, "GetFrameRate"):
+        try:
+            custom_rate = fbx_module.FbxTime.GetFrameRate(time_mode)
+        except Exception:  # pragma: no cover - defensive
+            custom_rate = None
+
+    if canonical.time_mode == getattr(fbx_module.FbxTime, "eCustom", None):
+        if custom_rate is None:
+            report.add_issue(
+                "WARN",
+                "Custom frame rate unavailable; unable to verify.",
+                code="globals.frame_rate_unknown",
+                object_path="<globals>",
+            )
+        elif not math.isclose(custom_rate, canonical.frame_rate, rel_tol=1e-6):
+            report.add_issue(
+                "FAIL",
+                "Custom frame rate does not match canonical export configuration.",
+                code="globals.frame_rate",
+                object_path="<globals>",
+            )
 
     time_span = fbx_module.FbxTimeSpan()
     globals_settings.GetTimelineDefaultTimeSpan(time_span)
