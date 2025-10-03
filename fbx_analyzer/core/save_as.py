@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from ..models import SceneNode
 from ..utils import resolve_enum_value
 from . import sdk
+from .validation import SceneValidator, round_trip_check
 from .exceptions import FBXLoadError, FBXSaveError
 
 
@@ -25,6 +26,10 @@ class SceneExportDiagnostics:
     pruned_nodes: List[Dict[str, Any]] = field(default_factory=list)
     attribute_updates: List[Dict[str, Any]] = field(default_factory=list)
     transform_updates: List[Dict[str, Any]] = field(default_factory=list)
+    validation_report_before: Dict[str, Any] = field(default_factory=dict)
+    validation_report_after: Dict[str, Any] = field(default_factory=dict)
+    auto_repairs: List[Dict[str, str]] = field(default_factory=list)
+    roundtrip_report: Dict[str, Any] = field(default_factory=dict)
 
     def record_root_reuse(self, node) -> None:
         self.reused_root_uid = int(node.GetUniqueID())
@@ -130,8 +135,57 @@ def save_scene_graph_as(
         if scene_graph is not None:
             _apply_scene_graph_changes(scene, scene_graph, diagnostics)
 
+        validator = SceneValidator(scene)
+        validation_report = validator.validate()
+        diagnostics.validation_report_before = validation_report.to_dict()
+
+        baseline_metrics = validation_report.metrics
+
+        if not validation_report.export_ready:
+            validator.auto_repair(validation_report)
+            diagnostics.auto_repairs = list(validation_report.repairs)
+            post_repair_report = validator.validate()
+            diagnostics.validation_report_after = post_repair_report.to_dict()
+            baseline_metrics = post_repair_report.metrics
+            if not post_repair_report.export_ready:
+                summary = ", ".join(
+                    f"{name}: {status}" for name, status in post_repair_report.status_summary().items()
+                )
+                raise FBXSaveError(
+                    "Scene validation failed after auto-repair: "
+                    f"{summary or 'unresolved issues present.'}"
+                )
+        else:
+            diagnostics.validation_report_after = validation_report.to_dict()
+            diagnostics.auto_repairs = []
+
         if not sdk.save_scene(manager, scene, destination):
             raise FBXSaveError(f"Failed to export FBX scene to '{destination}'")
+
+        try:
+            roundtrip = round_trip_check(
+                destination,
+                canonical_settings=validator.canonical,
+                baseline_metrics=baseline_metrics,
+            )
+        except RuntimeError as exc:
+            raise FBXSaveError(str(exc)) from exc
+        diagnostics.roundtrip_report = roundtrip.to_dict()
+        if not roundtrip.validation.export_ready or roundtrip.metrics_diff:
+            summary = ", ".join(
+                f"{name}: {status}" for name, status in roundtrip.validation.status_summary().items()
+            )
+            diff_summary = "; ".join(
+                f"{entry['metric']} (expected {entry['expected']}, actual {entry['actual']})"
+                for entry in roundtrip.metrics_diff
+            )
+            details = summary
+            if diff_summary:
+                details = f"{details}; metrics diff -> {diff_summary}" if details else diff_summary
+            raise FBXSaveError(
+                "Round-trip validation failed for exported scene: "
+                f"{details or 'validation returned failures.'}"
+            )
     finally:
         sdk.destroy_manager(manager)
 
