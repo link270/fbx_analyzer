@@ -6,7 +6,7 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..models import SceneNode
 from ..utils import resolve_enum_value
@@ -236,7 +236,7 @@ def _apply_scene_graph_changes(
     """Reconcile the editable ``SceneNode`` tree back onto the FBX scene."""
 
     scene_root = scene.GetRootNode()
-    existing_nodes = _map_scene_nodes(scene_root)
+    existing_nodes, existing_paths = _map_scene_nodes(scene_root)
     used_uids: set[int] = set()
     root_uid = scene_root.GetUniqueID()
 
@@ -249,6 +249,12 @@ def _apply_scene_graph_changes(
             # Treat the editable root node as the SDK scene root even if the UID does not match
             fbx_node = scene_root
             node_model.uid = root_uid
+        elif fbx_node is None and node_model.uid is not None:
+            fallback = existing_paths.get(node_model.original_path)
+            if fallback is not None:
+                fbx_node = fallback
+                node_model.uid = fbx_node.GetUniqueID()
+
         if fbx_node is None:
             name = node_model.name or "Node"
             fbx_node = fbx.FbxNode.Create(scene, name)
@@ -262,6 +268,10 @@ def _apply_scene_graph_changes(
             _ensure_parent(parent_fbx, fbx_node)
             if diagnostics is not None and previous_parent is not parent_fbx:
                 diagnostics.record_reparent(fbx_node, previous_parent, parent_fbx)
+
+        existing_nodes[node_model.uid] = fbx_node
+        if node_model.original_path not in existing_paths:
+            existing_paths[node_model.original_path] = fbx_node
 
         used_uids.add(fbx_node.GetUniqueID())
 
@@ -284,18 +294,20 @@ def _apply_scene_graph_changes(
     _prune_unused_nodes(scene_root, existing_nodes, used_uids, diagnostics)
 
 
-def _map_scene_nodes(root) -> Dict[int, Any]:  # type: ignore[valid-type]
-    """Create a UID lookup for every node in the current scene."""
+def _map_scene_nodes(root) -> Tuple[Dict[int, Any], Dict[Tuple[int, ...], Any]]:  # type: ignore[valid-type]
+    """Create UID and path lookups for every node in the current scene."""
 
-    mapping: Dict[int, Any] = {}
+    uid_mapping: Dict[int, Any] = {}
+    path_mapping: Dict[Tuple[int, ...], Any] = {}
 
-    def walk(node) -> None:  # type: ignore[valid-type]
-        mapping[node.GetUniqueID()] = node
+    def walk(node, path: Tuple[int, ...]) -> None:  # type: ignore[valid-type]
+        uid_mapping[node.GetUniqueID()] = node
+        path_mapping[path] = node
         for idx in range(node.GetChildCount()):
-            walk(node.GetChild(idx))
+            walk(node.GetChild(idx), path + (idx,))
 
-    walk(root)
-    return mapping
+    walk(root, ())
+    return uid_mapping, path_mapping
 
 
 def _ensure_parent(parent_fbx, child):  # type: ignore[valid-type]
