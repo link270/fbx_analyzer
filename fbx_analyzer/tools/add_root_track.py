@@ -1,258 +1,343 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ..core import sdk
 
 
-def _find_node_by_name(root, name: str):  # type: ignore[valid-type]
-    if not root:
-        return None
-    if (root.GetName() or "") == name:
-        return root
-    for i in range(root.GetChildCount()):
-        res = _find_node_by_name(root.GetChild(i), name)
-        if res is not None:
-            return res
-    return None
-
-
-def _get_expected_root_name_from_skeleton(skel_scene) -> Tuple[str, Optional[str]]:  # type: ignore[valid-type]
-    """Return (skeleton_root_joint_name, expected_container_root_name).
-
-    If the skeleton root joint has a parent that is not the SDK scene root, we
-    treat that parent name as the expected root container name for UE.
-    """
+def _collect_root_info(
+    skel_scene,
+) -> Tuple[str, Optional[str], Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]]]]:
+    """Return (root_joint_name, container_name, container_trs) from the skeleton scene."""
 
     root = skel_scene.GetRootNode()
     if root is None:
         raise RuntimeError("Skeleton scene has no root node")
 
-    # Heuristic: find first node that has a Skeleton attribute and no parent skeleton
-    fbx, _ = sdk.import_fbx_module()
-    skel_class = getattr(fbx, "FbxSkeleton", None)
-    if skel_class is None:
-        raise RuntimeError("FbxSkeleton class not available in SDK")
+    fbx_module, _ = sdk.import_fbx_module()
+    skeleton_class = getattr(fbx_module, "FbxSkeleton", None)
+    if skeleton_class is None:
+        raise RuntimeError("FbxSkeleton class unavailable in SDK")
 
-    def is_skeleton(n) -> bool:
-        a = n.GetNodeAttribute()
+    def is_skeleton(node) -> bool:
+        attr = node.GetNodeAttribute()
         try:
-            return bool(a and isinstance(a, skel_class))
+            return bool(attr and isinstance(attr, skeleton_class))
         except Exception:
             return False
 
-    def find_skeleton_root(n):
-        for i in range(n.GetChildCount()):
-            c = n.GetChild(i)
-            if is_skeleton(c):
-                # ensure parent is not a skeleton
-                p = c.GetParent()
-                if not (p and is_skeleton(p)):
-                    return c
-            res = find_skeleton_root(c)
-            if res is not None:
-                return res
+    def locate_root(node):
+        for idx in range(node.GetChildCount()):
+            child = node.GetChild(idx)
+            if is_skeleton(child):
+                parent = child.GetParent()
+                if not (parent and is_skeleton(parent)):
+                    return child
+            result = locate_root(child)
+            if result is not None:
+                return result
         return None
 
-    skel_root = find_skeleton_root(root)
-    if skel_root is None:
+    root_joint = locate_root(root)
+    if root_joint is None:
         raise RuntimeError("Unable to locate skeleton root joint in skeleton scene")
 
-    parent = skel_root.GetParent()
-    expected_container = None
+    parent = root_joint.GetParent()
+    container_name = None
+    container_trs = None
     if parent is not None and parent != root:
-        expected_container = parent.GetName() or None
-    return (skel_root.GetName() or "", expected_container)
+        container_name = parent.GetName() or None
+        container_trs = (
+            tuple(parent.LclTranslation.Get()),
+            tuple(parent.LclRotation.Get()),
+            tuple(parent.LclScaling.Get()),
+        )
+
+    return root_joint.GetName() or "", container_name, container_trs
 
 
-def add_missing_root_track(
-    skeleton_path: str, animation_path: str, output_path: str
-) -> None:
-    """Patch the animation FBX to include a constant track for the skeleton's UE root.
+def _find_nodes_by_name(root, name: str) -> List[Any]:  # type: ignore[valid-type]
+    matches: List[Any] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if (node.GetName() or "") == name:
+            matches.append(node)
+        for idx in range(node.GetChildCount()):
+            stack.append(node.GetChild(idx))
+    return matches
 
-    If the skeleton root joint (e.g., 'Hips') has a non-root parent (e.g.,
-    'exampleCharacter_BODY'), the animation file will receive a new node with
-    that parent name inserted above the animated skeleton root (if missing) and
-    identity TRS curves will be added for it.
-    """
 
-    fbx, _ = sdk.import_fbx_module()
-
-    # Load skeleton and get expected root names
-    m_skel = sdk.create_manager()
+def _collect_anim_layers(scene, fbx_module) -> List[Any]:  # type: ignore[name-defined]
+    layers: List[Any] = []
     try:
-        sdk.create_io_settings(m_skel)
-        sc_skel = sdk.create_scene(m_skel)
-        if not sdk.load_scene(m_skel, sc_skel, skeleton_path):
-            raise RuntimeError(f"Failed to load skeleton FBX: {skeleton_path}")
-        skel_root_joint, expected_container = _get_expected_root_name_from_skeleton(sc_skel)
-    finally:
-        sdk.destroy_manager(m_skel)
+        crit = fbx_module.FbxCriteria.ObjectType(fbx_module.FbxAnimLayer.ClassId)
+        count = scene.GetSrcObjectCount(crit)
+        for index in range(count or 0):
+            lyr = scene.GetSrcObject(crit, index)
+            if lyr:
+                layers.append(lyr)
+    except Exception:
+        pass
+    if layers:
+        return layers
 
-    # Load animation
-    m = sdk.create_manager()
     try:
-        sdk.create_io_settings(m)
-        sc = sdk.create_scene(m)
-        if not sdk.load_scene(m, sc, animation_path):
-            raise RuntimeError(f"Failed to load animation FBX: {animation_path}")
-
-        # Align global units/axis from skeleton when possible
-        # (Keep it minimal: only copy when APIs are available)
-        try:
-            m2 = sdk.create_manager()
+        stack_crit = fbx_module.FbxCriteria.ObjectType(fbx_module.FbxAnimStack.ClassId)
+        stack_count = scene.GetSrcObjectCount(stack_crit)
+        for s_index in range(stack_count or 0):
+            stack = scene.GetSrcObject(stack_crit, s_index)
+            if not stack:
+                continue
             try:
-                sdk.create_io_settings(m2)
-                sc2 = sdk.create_scene(m2)
-                if sdk.load_scene(m2, sc2, skeleton_path):
-                    sc.GetGlobalSettings().SetAxisSystem(sc2.GetGlobalSettings().GetAxisSystem())
-                    sc.GetGlobalSettings().SetSystemUnit(sc2.GetGlobalSettings().GetSystemUnit())
-            finally:
-                sdk.destroy_manager(m2)
+                member_count = stack.GetMemberCount()
+            except Exception:
+                member_count = 0
+            for member_index in range(member_count or 0):
+                lyr = stack.GetMember(member_index)
+                if lyr:
+                    layers.append(lyr)
+    except Exception:
+        pass
+    return layers
+
+
+def _ensure_layer(scene):  # type: ignore[valid-type]
+    fbx_module, _ = sdk.import_fbx_module()
+    stack = None
+    try:
+        crit = fbx_module.FbxCriteria.ObjectType(fbx_module.FbxAnimStack.ClassId)
+        if scene.GetSrcObjectCount(crit) > 0:
+            stack = scene.GetSrcObject(crit, 0)
+    except Exception:
+        stack = None
+    if stack is None:
+        stack = fbx_module.FbxAnimStack.Create(scene, "AnimStack")
+    layer = None
+    try:
+        if hasattr(stack, "GetMemberCount") and stack.GetMemberCount() > 0:
+            layer = stack.GetMember(0)
+    except Exception:
+        layer = None
+    if layer is None:
+        layer = fbx_module.FbxAnimLayer.Create(scene, "BaseLayer")
+        try:
+            stack.AddMember(layer)
+        except Exception:
+            pass
+    return layer
+
+
+def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
+    fbx_module, _ = sdk.import_fbx_module()
+
+    def ensure(prop, component, value):
+        try:
+            curve = prop.GetCurve(layer, component, True)
+        except Exception:
+            curve = None
+        if curve is None:
+            return
+        if hasattr(curve, "KeyGetCount") and curve.KeyGetCount() > 0:
+            return
+        try:
+            curve.KeyModifyBegin()
+            t = fbx_module.FbxTime()
+            t.SetSecondDouble(0.0)
+            index = curve.KeyAdd(t)
+            try:
+                curve.KeySetValue(index, value)
+            except Exception:
+                pass
+            try:
+                curve.KeySetInterpolation(index, fbx_module.FbxAnimCurveDef.eInterpolationConstant)
+            except Exception:
+                pass
+            curve.KeyModifyEnd()
         except Exception:
             pass
 
-        scene_root = sc.GetRootNode()
+    for comp, val in (('X', 0.0), ('Y', 0.0), ('Z', 0.0)):
+        ensure(node.LclTranslation, comp, val)
+        ensure(node.LclRotation, comp, val)
+    for comp, val in (('X', 1.0), ('Y', 1.0), ('Z', 1.0)):
+        ensure(node.LclScaling, comp, val)
+
+
+def add_missing_root_track(skeleton_path: str, animation_path: str, output_path: str) -> None:
+    """Add an explicit root track to the animation so it matches the skeleton."""
+
+    fbx_module, _ = sdk.import_fbx_module()
+    # Gather skeleton metadata
+    mgr_skel = sdk.create_manager()
+    try:
+        sdk.create_io_settings(mgr_skel)
+        scene_skel = sdk.create_scene(mgr_skel)
+        if not sdk.load_scene(mgr_skel, scene_skel, skeleton_path):
+            raise RuntimeError(f"Failed to load skeleton FBX: {skeleton_path}")
+        root_name, container_name, container_trs = _collect_root_info(scene_skel)
+    finally:
+        sdk.destroy_manager(mgr_skel)
+
+    mgr = sdk.create_manager()
+    try:
+        sdk.create_io_settings(mgr)
+        scene = sdk.create_scene(mgr)
+        if not sdk.load_scene(mgr, scene, animation_path):
+            raise RuntimeError(f"Failed to load animation FBX: {animation_path}")
+
+        # Align global settings with skeleton
+        try:
+            mgr2 = sdk.create_manager()
+            sdk.create_io_settings(mgr2)
+            scene2 = sdk.create_scene(mgr2)
+            if sdk.load_scene(mgr2, scene2, skeleton_path):
+                gs_anim = scene.GetGlobalSettings()
+                gs_skel = scene2.GetGlobalSettings()
+                gs_anim.SetAxisSystem(gs_skel.GetAxisSystem())
+                gs_anim.SetSystemUnit(gs_skel.GetSystemUnit())
+        finally:
+            try:
+                sdk.destroy_manager(mgr2)
+            except Exception:
+                pass
+
+        scene_root = scene.GetRootNode()
         if scene_root is None:
             raise RuntimeError("Animation scene has no root node")
 
-        # Locate the animated skeleton root joint by name
-        animated_root = _find_node_by_name(scene_root, skel_root_joint)
-        if animated_root is None:
-            # As a fallback, patch directly at scene root if we can't find the joint
-            animated_root = scene_root
+        layers = _collect_anim_layers(scene, fbx_module)
+        anim_layer = _ensure_layer(scene)
+        if anim_layer not in layers:
+            layers.append(anim_layer)
 
-        # Ensure expected container exists and sits above animated_root
-        target_name = expected_container or skel_root_joint
-        target_node = _find_node_by_name(scene_root, target_name)
-        # Preserve transforms from top ancestor like 'Actor 1'
-        def find_by_name(n, nm: str):
-            if (n.GetName() or "") == nm:
-                return n
-            for i in range(n.GetChildCount()):
-                r = find_by_name(n.GetChild(i), nm)
-                if r:
-                    return r
-            return None
-        top_ancestor = None
-        curr_root = find_by_name(scene_root, skel_root_joint)
-        if curr_root is not None:
-            p = curr_root
-            while p is not None and p.GetParent() is not None and p.GetParent() is not scene_root:
-                p = p.GetParent()
-            top_ancestor = p
+        # Identify the animated root joint in the scene
+        root_matches = _find_nodes_by_name(scene_root, root_name)
+        if not root_matches:
+            raise RuntimeError(f"Root joint '{root_name}' not found in animation scene")
 
-        if target_node is None:
-            target_node = fbx.FbxNode.Create(sc, target_name)
-            scene_root.AddChild(target_node)
-        # Ensure expected container sits directly under scene root to mirror typical skeleton structure
-        if target_node.GetParent() is not scene_root:
-            try:
-                # Detach from current parent and attach to scene root
-                (target_node.GetParent() or scene_root).RemoveChild(target_node)
-            except Exception:
-                pass
-            scene_root.AddChild(target_node)
-        # Make container a Null and copy transforms from previous top ancestor
-        try:
-            null_attr = fbx.FbxNull.Create(sc, target_name or "Null")
-            target_node.SetNodeAttribute(null_attr)
-        except Exception:
-            pass
-        if top_ancestor is not None and top_ancestor is not target_node:
-            try:
-                t = top_ancestor.LclTranslation.Get(); r = top_ancestor.LclRotation.Get()
-                target_node.LclTranslation.Set(t)
-                target_node.LclRotation.Set(r)
-                # Avoid inheriting bad zero scale from sources; use identity scale for container
-                target_node.LclScaling.Set(fbx.FbxDouble3(1.0,1.0,1.0))
-            except Exception:
-                pass
-        # Reparent the animated root under the target container
-        if animated_root.GetParent() is not target_node:
+        animated_root = root_matches[0]
+        for duplicate in root_matches[1:]:
+            if duplicate is animated_root:
+                continue
+            children = [duplicate.GetChild(i) for i in range(duplicate.GetChildCount())]
+            for child in children:
+                try:
+                    duplicate.RemoveChild(child)
+                    animated_root.AddChild(child)
+                except Exception:
+                    pass
+            parent = duplicate.GetParent()
+            if parent:
+                try:
+                    parent.RemoveChild(duplicate)
+                except Exception:
+                    pass
+
+        # Capture ancestor chain up to the scene root
+        ancestors: List[Any] = []
+        walker = animated_root
+        while walker is not None and walker is not scene_root:
+            parent = walker.GetParent()
+            if parent is None:
+                break
+            ancestors.append(parent)
+            if parent is scene_root:
+                break
+            walker = parent
+        top_ancestor = ancestors[-1] if ancestors and ancestors[-1].GetParent() is scene_root else None
+
+        # Prepare or create the container node
+        container_node = None
+        if container_name:
+            container_matches = _find_nodes_by_name(scene_root, container_name)
+            container_node = None
+            for candidate in container_matches:
+                attr = candidate.GetNodeAttribute()
+                try:
+                    if attr and isinstance(attr, fbx_module.FbxNull):
+                        container_node = candidate
+                        break
+                except Exception:
+                    pass
+            if container_node is None and container_matches:
+                container_node = container_matches[0]
+            if container_node is None:
+                container_node = fbx_module.FbxNode.Create(scene, container_name)
+                scene_root.AddChild(container_node)
+            else:
+                for other in container_matches:
+                    if other is container_node:
+                        continue
+                    children = [other.GetChild(i) for i in range(other.GetChildCount())]
+                    for child in children:
+                        try:
+                            other.RemoveChild(child)
+                            container_node.AddChild(child)
+                        except Exception:
+                            pass
+                    parent = other.GetParent()
+                    if parent:
+                        try:
+                            parent.RemoveChild(other)
+                        except Exception:
+                            pass
+            attr = container_node.GetNodeAttribute()
+            if not (attr and isinstance(attr, fbx_module.FbxNull)):
+                container_node.SetNodeAttribute(fbx_module.FbxNull.Create(scene, container_name))
+            if container_node.GetParent() is not scene_root:
+                try:
+                    (container_node.GetParent() or scene_root).RemoveChild(container_node)
+                except Exception:
+                    pass
+                scene_root.AddChild(container_node)
+            if container_trs is not None:
+                container_node.LclTranslation.Set(fbx_module.FbxDouble3(*container_trs[0]))
+                container_node.LclRotation.Set(fbx_module.FbxDouble3(*container_trs[1]))
+                scale_vals = container_trs[2]
+            elif top_ancestor is not None and top_ancestor is not container_node:
+                container_node.LclTranslation.Set(top_ancestor.LclTranslation.Get())
+                container_node.LclRotation.Set(top_ancestor.LclRotation.Get())
+                scale_vals = tuple(top_ancestor.LclScaling.Get())
+            else:
+                scale_vals = tuple(container_node.LclScaling.Get())
+            scale_vals = tuple(1.0 if abs(v) < 1e-6 else v for v in scale_vals)
+            container_node.LclScaling.Set(fbx_module.FbxDouble3(*scale_vals))
+        else:
+            container_node = None
+
+        target_parent = container_node or scene_root
+        if animated_root.GetParent() is not target_parent:
             try:
                 (animated_root.GetParent() or scene_root).RemoveChild(animated_root)
             except Exception:
                 pass
-            target_node.AddChild(animated_root)
+            target_parent.AddChild(animated_root)
 
-        # If the previous top ancestor becomes empty after reparent, remove it generically
-        try:
-            if top_ancestor is not None and top_ancestor is not target_node:
-                # Move remaining children (if any) to container, then remove ancestor
-                moved_children = [top_ancestor.GetChild(i) for i in range(top_ancestor.GetChildCount())]
-                for ch in moved_children:
-                    try:
-                        top_ancestor.RemoveChild(ch)
-                        target_node.AddChild(ch)
-                    except Exception:
-                        pass
-                parent = top_ancestor.GetParent()
-                if parent:
-                    try:
-                        parent.RemoveChild(top_ancestor)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        # Ensure an anim stack/layer exists
-        stack = None
-        try:
-            crit = fbx.FbxCriteria.ObjectType(fbx.FbxAnimStack.ClassId)
-            cnt = sc.GetSrcObjectCount(crit)
-            if cnt > 0:
-                stack = sc.GetSrcObject(crit, 0)
-        except Exception:
-            stack = None
-        if stack is None:
-            stack = fbx.FbxAnimStack.Create(sc, "Stack")
-        layer = None
-        try:
-            if hasattr(stack, "GetMemberCount") and stack.GetMemberCount() > 0:
-                layer = stack.GetMember(0)
-        except Exception:
-            layer = None
-        if layer is None:
-            layer = fbx.FbxAnimLayer.Create(sc, "BaseLayer")
-            try:
-                stack.AddMember(layer)
-            except Exception:
-                pass
-
-        # Add constant identity curves on the target node if none exist
-        def _ensure_curve(prop, component: str, value: float):
-            try:
-                curve = prop.GetCurve(layer, component, True)
-            except Exception:
-                curve = None
-            if curve is None:
-                return
-            try:
-                curve.KeyModifyBegin()
-                t = fbx.FbxTime()
-                t.SetSecondDouble(0.0)
-                idx = curve.KeyAdd(t)
+        for ancestor in reversed(ancestors):
+            if ancestor is container_node:
+                continue
+            children = [ancestor.GetChild(i) for i in range(ancestor.GetChildCount())]
+            for child in children:
+                if child is container_node or child is animated_root:
+                    continue
                 try:
-                    curve.KeySetValue(idx, value)
+                    ancestor.RemoveChild(child)
+                    (container_node or scene_root).AddChild(child)
                 except Exception:
                     pass
+            parent = ancestor.GetParent()
+            if parent:
                 try:
-                    curve.KeySetInterpolation(idx, fbx.FbxAnimCurveDef.eInterpolationConstant)
+                    parent.RemoveChild(ancestor)
                 except Exception:
                     pass
-                curve.KeyModifyEnd()
-            except Exception:
-                pass
 
-        for comp, val in (("X", 0.0), ("Y", 0.0), ("Z", 0.0)):
-            _ensure_curve(target_node.LclTranslation, comp, val)
-            _ensure_curve(target_node.LclRotation, comp, val)
-        for comp, val in (("X", 1.0), ("Y", 1.0), ("Z", 1.0)):
-            _ensure_curve(target_node.LclScaling, comp, val)
+        if container_node is not None:
+            _ensure_identity_curves(container_node, anim_layer)
+        _ensure_identity_curves(animated_root, anim_layer)
 
-        # Save patched animation
-        if not sdk.save_scene(m, sc, output_path):
+        if not sdk.save_scene(mgr, scene, output_path):
             raise RuntimeError(f"Failed to save patched animation to: {output_path}")
     finally:
-        sdk.destroy_manager(m)
+        sdk.destroy_manager(mgr)
