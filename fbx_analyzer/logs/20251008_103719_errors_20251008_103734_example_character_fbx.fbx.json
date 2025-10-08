@@ -1,0 +1,33 @@
+{
+  "operation": "save_as",
+  "timestamp": "20251008_103734",
+  "source_path": "C:\\Users\\mitch\\Downloads\\FlowAnimationStuff\\example_character_fbx.fbx",
+  "target_path": "C:\\Users\\mitch\\Downloads\\FlowAnimationStuff\\example_character_HipsRoot.fbx",
+  "error": "Scene validation failed after auto-repair: globals: WARN, nodes: PASS, geometry: PASS, skin: FAIL, materials: PASS, animation: WARN, constraints: PASS, connections: PASS",
+  "validation_status_before": {
+    "globals": "WARN",
+    "nodes": "PASS",
+    "geometry": "PASS",
+    "skin": "FAIL",
+    "materials": "PASS",
+    "animation": "WARN",
+    "constraints": "PASS",
+    "connections": "PASS"
+  },
+  "validation_status_after": {
+    "globals": "WARN",
+    "nodes": "PASS",
+    "geometry": "PASS",
+    "skin": "FAIL",
+    "materials": "PASS",
+    "animation": "WARN",
+    "constraints": "PASS",
+    "connections": "PASS"
+  },
+  "repairs_applied": [
+    {
+      "object": "<globals>",
+      "action": "Unable to set custom frame rate; setter unavailable."
+    }
+  ]
+}

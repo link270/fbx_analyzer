@@ -77,6 +77,46 @@ def save_scene(manager, scene, path: str) -> bool:
     fbx, _ = import_fbx_module()
     exporter = fbx.FbxExporter.Create(manager, "")
     try:
+        # Ensure exporter IO settings include smoothing groups so importers like
+        # Unreal can derive correct normals without warnings. Also compute
+        # smoothing from normals if needed.
+        ios = manager.GetIOSettings()
+        if ios is None:
+            ios = create_io_settings(manager)
+        # Best-effort: try known constants first, then fall back to common property keys.
+        for key_name in (
+            "EXP_FBX_SMOOTHING_GROUPS",
+            "EXP_SMOOTHING_GROUPS",
+            "IMP_FBX_SMOOTHING_GROUPS",  # harmless if present
+            "IOSN_SMOOTHING_GROUPS",
+            "IOSN_EXP_FBX_SMOOTHING_GROUPS",
+        ):
+            prop = getattr(fbx, key_name, None)
+            if prop is not None:
+                try:
+                    ios.SetBoolProp(prop, True)
+                except Exception:
+                    pass
+        # Fallback string keys used by some SDK variants / plugins.
+        for prop_path in (
+            "Export|SmoothingGroups",
+            "FBXExportSmoothingGroups",
+            "FBX|Export|SmoothingGroups",
+            "SmoothingGroups|Export",
+        ):
+            try:
+                ios.SetBoolProp(prop_path, True)
+            except Exception:
+                pass
+
+        # Compute smoothing from normals as a safety net so the SDK writes groups
+        try:
+            converter = fbx.FbxGeometryConverter(manager)
+            # The second parameter is legacy in some SDKs; rely on default behavior
+            converter.ComputeEdgeSmoothingFromNormals(scene)
+        except Exception:
+            pass
+
         registry = manager.GetIOPluginRegistry()
         file_format = registry.GetNativeWriterFormat()
         if not exporter.Initialize(path, file_format, manager.GetIOSettings()):

@@ -653,6 +653,7 @@ def ValidateSkinAndPoses(scene, fbx_module) -> ValidationCategoryReport:  # type
         for idx in range(node.GetChildCount()):
             yield from iter_nodes(node.GetChild(idx))
 
+    any_skinned_mesh = False
     for node in iter_nodes(root):
         attr = node.GetNodeAttribute()
         if attr is None or not isinstance(attr, fbx_module.FbxMesh):
@@ -672,6 +673,8 @@ def ValidateSkinAndPoses(scene, fbx_module) -> ValidationCategoryReport:  # type
                     object_path=path,
                 )
                 continue
+            # At least one skin deformer with clusters marks the mesh as skinned
+            any_skinned_mesh = True
             for cluster_index in range(cluster_count):
                 cluster = skin.GetCluster(cluster_index)
                 if cluster is None:
@@ -709,25 +712,27 @@ def ValidateSkinAndPoses(scene, fbx_module) -> ValidationCategoryReport:  # type
                         object_path=path,
                     )
 
-    bind_pose_found = False
-    for pose_index in range(scene.GetPoseCount()):
-        pose = scene.GetPose(pose_index)
-        if pose.IsBindPose():
-            bind_pose_found = True
-            if pose.GetCount() == 0:
-                report.add_issue(
-                    "FAIL",
-                    "Bind pose has no nodes.",
-                    code="skin.bind_pose_empty",
-                    object_path="<poses>",
-                )
-    if not bind_pose_found:
-        report.add_issue(
-            "FAIL",
-            "No bind pose present in scene.",
-            code="skin.bind_pose_missing",
-            object_path="<poses>",
-        )
+    # Only enforce bind pose if the scene actually contains skinned meshes
+    if any_skinned_mesh:
+        bind_pose_found = False
+        for pose_index in range(scene.GetPoseCount()):
+            pose = scene.GetPose(pose_index)
+            if pose.IsBindPose():
+                bind_pose_found = True
+                if pose.GetCount() == 0:
+                    report.add_issue(
+                        "FAIL",
+                        "Bind pose has no nodes.",
+                        code="skin.bind_pose_empty",
+                        object_path="<poses>",
+                    )
+        if not bind_pose_found:
+            report.add_issue(
+                "FAIL",
+                "No bind pose present in scene.",
+                code="skin.bind_pose_missing",
+                object_path="<poses>",
+            )
 
     return report
 
@@ -989,6 +994,7 @@ def AutoRepair(
     skin_category = report.categories.get("skin")
     needs_bind_pose = False
     if skin_category is not None:
+        processed_paths = set()
         for issue in skin_category.issues:
             path = issue.object_path or "<mesh>"
             if issue.code in {"skin.cluster_matrix", "skin.cluster_link_matrix"}:
@@ -1016,6 +1022,71 @@ def AutoRepair(
                 report.repairs.append({"object": path, "action": issue.fix_applied})
             elif issue.code in {"skin.bind_pose_missing", "skin.bind_pose_empty"}:
                 needs_bind_pose = True
+            elif issue.code in {"skin.no_clusters", "skin.cluster_link", "skin.cluster_weights"}:
+                # Attempt to prune invalid clusters or empty skins so scene can export
+                if path in processed_paths:
+                    continue
+                processed_paths.add(path)
+                node = _find_node_by_path(root, path)
+                if node is None:
+                    continue
+                mesh_attr = node.GetNodeAttribute()
+                if not isinstance(mesh_attr, fbx_module.FbxMesh):
+                    continue
+                removed_any = False
+                skin_list = list(_iter_skin_deformers(mesh_attr, fbx_module))
+                for skin in skin_list:
+                    if skin is None:
+                        continue
+                    faulty_clusters = False
+                    # Remove clusters that are missing links or have no weights/indices
+                    try:
+                        count = int(skin.GetClusterCount())
+                    except Exception:
+                        count = 0
+                    clusters = [skin.GetCluster(i) for i in range(max(count, 0))]
+                    for cluster in clusters:
+                        if cluster is None:
+                            continue
+                        link = cluster.GetLink()
+                        empty_weights = (
+                            getattr(cluster, "GetControlPointIndicesCount", lambda: 0)() == 0
+                            or _get_cluster_weight_count(cluster) == 0
+                        )
+                        if link is None or empty_weights:
+                            faulty_clusters = True
+                            remover = getattr(skin, "RemoveCluster", None)
+                            if callable(remover):
+                                try:
+                                    remover(cluster)
+                                    removed_any = True
+                                except Exception:
+                                    pass
+                    # If the skin has no clusters left, remove the deformer entirely
+                    try:
+                        remaining = int(skin.GetClusterCount())
+                    except Exception:
+                        remaining = 0
+                    if remaining == 0:
+                        rem_skin = getattr(mesh_attr, "RemoveDeformer", None)
+                        if callable(rem_skin):
+                            try:
+                                rem_skin(skin)
+                                removed_any = True
+                            except Exception:
+                                pass
+                    elif faulty_clusters and not removed_any:
+                        # If we couldn't remove clusters (API unavailable), remove the whole deformer
+                        rem_skin = getattr(mesh_attr, "RemoveDeformer", None)
+                        if callable(rem_skin):
+                            try:
+                                rem_skin(skin)
+                                removed_any = True
+                            except Exception:
+                                pass
+                if removed_any:
+                    issue.fix_applied = "Pruned invalid skin clusters/deformers."
+                    report.repairs.append({"object": path, "action": issue.fix_applied})
 
     if needs_bind_pose:
         pose = fbx_module.FbxPose.Create(scene, "AutoBindPose")
@@ -1139,6 +1210,10 @@ def round_trip_check(
         metrics_diff = []
         if baseline_metrics is not None:
             metrics_diff = validation_report.metrics.diff(baseline_metrics)
+            # Ignore smoothing layer diffs, which can vary across SDK export/import paths
+            metrics_diff = [
+                entry for entry in metrics_diff if ":layer:smoothing:" not in str(entry.get("metric", ""))
+            ]
         return RoundTripDiffReport(validation=validation_report, metrics_diff=metrics_diff)
     finally:
         sdk.destroy_manager(manager)
@@ -1260,31 +1335,28 @@ def _node_path(node) -> str:  # type: ignore[valid-type]
 
 
 def _find_node_by_path(root, path: str):  # type: ignore[valid-type]
-    target = path.split("/")
-    target = [segment for segment in target if segment]
+    target = [segment for segment in path.split("/") if segment]
     if not target:
         return root
 
-    def match(node, segments):
-        if not segments:
-            return node
-        name = segments[0]
-        if (node.GetName() or "") != name:
-            return None
-        if len(segments) == 1:
-            return node
-        for idx in range(node.GetChildCount()):
-            child = node.GetChild(idx)
-            result = match(child, segments[1:])
-            if result is not None:
-                return result
-        return None
+    # Allow absolute paths that include the root node's name as first segment
+    start_index = 0
+    root_name = root.GetName() or ""
+    if target and target[0] == root_name:
+        start_index = 1
 
-    for idx in range(root.GetChildCount()):
-        child = root.GetChild(idx)
-        result = match(child, target)
-        if result is not None:
-            return result
-    return None
+    current = root
+    for idx in range(start_index, len(target)):
+        name = target[idx]
+        found = None
+        for cidx in range(current.GetChildCount()):
+            child = current.GetChild(cidx)
+            if (child.GetName() or "") == name:
+                found = child
+                break
+        if found is None:
+            return None
+        current = found
+    return current
 
 

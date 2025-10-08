@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -41,11 +43,15 @@ DEFAULT_ATTRIBUTE_OPTIONS: Tuple[str, ...] = (
 )
 
 
+APP_LOGGER_NAME = "fbx_analyzer.app"
+
+
 class DocumentPane:
     """Render a single FBX analysis inside a notebook tab."""
 
-    def __init__(self, parent: ttk.Notebook, document: AnalyzedScene) -> None:
+    def __init__(self, parent: ttk.Notebook, document: AnalyzedScene, *, bake_on_promote_var: Optional[tk.BooleanVar] = None) -> None:
         self.document = document
+        self._bake_on_promote_var = bake_on_promote_var
         self.frame = ttk.Frame(parent)
 
         self._display_name_var = tk.StringVar(value="")
@@ -953,11 +959,20 @@ class DocumentPane:
                 self._set_node_status(f"Removed root {node.name}; promoted {new_root.name} to root.")
             self._reset_reparent_target()
         else:
+            bake = bool(self._bake_on_promote_var.get()) if self._bake_on_promote_var is not None else False
+            if bake:
+                nt, nr, ns = node.translation, node.rotation, node.scaling
+                for child in node.children:
+                    ct, cr, cs = child.translation, child.rotation, child.scaling
+                    child.scaling = (ns[0] * cs[0], ns[1] * cs[1], ns[2] * cs[2])
+                    child.rotation = (nr[0] + cr[0], nr[1] + cr[1], nr[2] + cr[2])
+                    child.translation = (nt[0] + ct[0], nt[1] + ct[1], nt[2] + ct[2])
             parent.children.remove(node)
             parent.children.extend(node.children)
             focus_uid = parent.uid
+            mode = "with baked transforms" if bake else "without baking transforms"
             self._set_node_status(
-                f"Removed {node.name}; promoted its children under {parent.name}."
+                f"Removed {node.name}; promoted its children under {parent.name} {mode}."
             )
 
         self._mark_scene_graph_dirty()
@@ -1019,6 +1034,13 @@ class DocumentPane:
 
     def _set_node_status(self, message: str) -> None:
         self._node_status_var.set(message)
+        # Mirror status updates to the session log for auditability
+        try:
+            logger = logging.getLogger(APP_LOGGER_NAME)
+            doc_path = getattr(self.document, "path", "<unknown>")
+            logger.info(f"status: {message} | doc=%s", doc_path)
+        except Exception:
+            pass
 
     def _mark_scene_graph_dirty(self) -> None:
         """Flag the document so Save As knows edits were applied."""
@@ -1124,6 +1146,24 @@ class FBXAnalyzerApp:
         self.status_var = tk.StringVar(value="Load FBX files to analyze.")
         self._debug_mode = tk.BooleanVar(value=False)
 
+        # Initialize session-wide logging
+        self._logs_dir = (Path(__file__).resolve().parents[1] / "logs")
+        self._logs_dir.mkdir(parents=True, exist_ok=True)
+        self._session_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._general_log_path = self._logs_dir / f"{self._session_ts}_general.log"
+
+        self._logger = logging.getLogger(APP_LOGGER_NAME)
+        self._logger.setLevel(logging.INFO)
+        # Avoid duplicate handlers if multiple app instances are created
+        if not any(isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', None) == str(self._general_log_path) for h in self._logger.handlers):
+            file_handler = logging.FileHandler(self._general_log_path, encoding="utf-8")
+            file_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+            file_handler.setFormatter(formatter)
+            self._logger.addHandler(file_handler)
+
+        self._logger.info("session_start: GUI launched | log=%s", str(self._general_log_path))
+
         self._build_ui()
 
         self.document_tabs: Dict[str, DocumentPane] = {}
@@ -1145,6 +1185,19 @@ class FBXAnalyzerApp:
         debug_toggle = ttk.Checkbutton(toolbar, text="Debug Mode", variable=self._debug_mode)
         debug_toggle.pack(side=tk.LEFT, padx=(6, 0))
 
+        patch_button = ttk.Button(toolbar, text="Patch Animation Root Track...", command=self._on_patch_animation_clicked)
+        patch_button.pack(side=tk.LEFT, padx=(6, 0))
+
+        conform_button = ttk.Button(toolbar, text="Conform Animation to Skeleton...", command=self._on_conform_animation_clicked)
+        conform_button.pack(side=tk.LEFT, padx=(6, 0))
+
+        # Option to bake the removed node's transform onto children when promoting
+        self._bake_on_promote = tk.BooleanVar(value=False)
+        bake_toggle = ttk.Checkbutton(
+            toolbar, text="Bake Transforms on Promote", variable=self._bake_on_promote
+        )
+        bake_toggle.pack(side=tk.LEFT, padx=(6, 0))
+
         close_button = ttk.Button(toolbar, text="Close Tab", command=self._on_close_clicked)
         close_button.pack(side=tk.LEFT, padx=(6, 0))
 
@@ -1154,20 +1207,25 @@ class FBXAnalyzerApp:
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
     def _on_import_clicked(self) -> None:
+        self._logger.info("action: import_clicked")
         paths = filedialog.askopenfilenames(
             parent=self.root,
             title="Select FBX file(s)",
             filetypes=[("FBX files", "*.fbx"), ("All files", "*.*")],
         )
         if not paths:
+            self._logger.info("action: import_cancelled")
             return
 
         for path in paths:
+            self._logger.info("action: import_begin | file=%s", path)
             document = self._analyze_file(path)
             if document is None:
+                self._logger.error("action: import_failed | file=%s", path)
                 continue
             self.documents.append(document)
             self._add_document_tab(document)
+            self._logger.info("action: import_success | file=%s", path)
 
     def _on_close_clicked(self) -> None:
         tab_id = self.notebook.select()
@@ -1186,6 +1244,10 @@ class FBXAnalyzerApp:
 
         self.notebook.forget(tab_id)
         pane.frame.destroy()
+        try:
+            self._logger.info("action: close_tab | doc=%s", getattr(document, "path", "<unknown>"))
+        except Exception:
+            pass
         self._update_status()
 
     def _on_save_as_clicked(self) -> None:
@@ -1210,49 +1272,253 @@ class FBXAnalyzerApp:
             initialfile=current_path.name,
         )
         if not save_path:
+            self._logger.info("action: save_as_cancelled | doc=%s", pane.document.path)
             return
 
-        debug_log_path: Optional[Path] = None
+        self._logger.info(
+            "action: save_as_begin | doc=%s | target=%s | debug=%s | dirty=%s",
+            pane.document.path,
+            save_path,
+            bool(self._debug_mode.get()),
+            bool(getattr(pane.document, "scene_graph_dirty", False)),
+        )
+
+        diagnostics: Optional[SceneExportDiagnostics] = None
         try:
             if self._debug_mode.get():
-                diagnostics = rebuild_scene_graph_as(
+                diagnostics = SceneExportDiagnostics()
+                rebuild_scene_graph_as(
                     pane.document.path,
                     save_path,
                     pane.document.scene_graph,
-                    diagnostics=SceneExportDiagnostics(),
+                    diagnostics=diagnostics,
                 )
-                debug_log_path = self._write_debug_diagnostics(Path(save_path), diagnostics)
+                diag_path = self._write_diagnostic_log(
+                    diagnostics=diagnostics,
+                    src_path=Path(pane.document.path),
+                    dst_path=Path(save_path),
+                    succeeded=True,
+                    error_message=None,
+                )
+                self._logger.info(
+                    "action: save_as_diagnostic_written | path=%s",
+                    str(diag_path) if diag_path else "<write_failed>",
+                )
+                # Log a compact validation status summary for quick triage
+                try:
+                    before = diagnostics.validation_report_before or {}
+                    after = diagnostics.validation_report_after or {}
+                    def _extract_status(report_dict: Dict[str, Any]) -> Dict[str, str]:
+                        cats = report_dict.get("categories", {}) if isinstance(report_dict, dict) else {}
+                        return {name: cat.get("status", "?") for name, cat in cats.items()} if isinstance(cats, dict) else {}
+                    self._logger.info(
+                        "validation_status | before=%s | after=%s",
+                        _extract_status(before),
+                        _extract_status(after),
+                    )
+                except Exception:
+                    pass
             else:
                 scene_graph = pane.document.scene_graph if pane.document.scene_graph_dirty else None
                 save_scene_graph_as(pane.document.path, save_path, scene_graph)
         except (FBXSDKNotAvailableError, FBXLoadError, FBXSaveError) as exc:
+            self._logger.error(
+                "action: save_as_failed | doc=%s | target=%s | error=%s",
+                pane.document.path,
+                save_path,
+                str(exc),
+            )
+            # If debug mode is on, write diagnostic and compact error logs even on failure
+            if self._debug_mode.get():
+                if diagnostics is None:
+                    diagnostics = SceneExportDiagnostics()
+                diag_path = self._write_diagnostic_log(
+                    diagnostics=diagnostics,
+                    src_path=Path(pane.document.path),
+                    dst_path=Path(save_path),
+                    succeeded=False,
+                    error_message=str(exc),
+                )
+                err_path = self._write_error_log(
+                    src_path=Path(pane.document.path),
+                    dst_path=Path(save_path),
+                    error_message=str(exc),
+                    diagnostics=diagnostics,
+                )
+                self._logger.info(
+                    "action: save_as_error_logs_written | diagnostic=%s | errors=%s",
+                    str(diag_path) if diag_path else "<diag_write_failed>",
+                    str(err_path) if err_path else "<error_write_failed>",
+                )
+                # Also log the compact validation status from diagnostics for failure cases
+                try:
+                    before = diagnostics.validation_report_before or {}
+                    after = diagnostics.validation_report_after or {}
+                    def _extract_status(report_dict: Dict[str, Any]) -> Dict[str, str]:
+                        cats = report_dict.get("categories", {}) if isinstance(report_dict, dict) else {}
+                        return {name: cat.get("status", "?") for name, cat in cats.items()} if isinstance(cats, dict) else {}
+                    self._logger.info(
+                        "validation_status | before=%s | after=%s",
+                        _extract_status(before),
+                        _extract_status(after),
+                    )
+                except Exception:
+                    pass
             messagebox.showerror("FBX Analyzer", str(exc), parent=self.root)
             return
 
         pane.document.scene_graph_dirty = False
         pane.update_document_path(save_path)
         if self._debug_mode.get():
-            if debug_log_path is not None:
-                self.status_var.set(
-                    f"Saved debug copy to {save_path}; diagnostics -> {debug_log_path}"
-                )
-            else:
-                self.status_var.set(
-                    f"Saved debug copy to {save_path}; failed to write diagnostics log."
-                )
+            self.status_var.set(f"Saved debug copy to {save_path}; detailed diagnostics saved to logs.")
         else:
             self.status_var.set(f"Saved copy to {save_path}")
+        self._logger.info("action: save_as_success | doc=%s | target=%s", pane.document.path, save_path)
 
-    def _write_debug_diagnostics(
-        self, save_path: Path, diagnostics: SceneExportDiagnostics
-    ) -> Optional[Path]:
-        debug_path = save_path.with_suffix(save_path.suffix + ".debug.json")
+    def _on_patch_animation_clicked(self) -> None:
+        tab_id = self.notebook.select()
+        if not tab_id:
+            messagebox.showinfo("FBX Analyzer", "Load a skeleton FBX first.", parent=self.root)
+            return
+        pane = self.document_tabs.get(tab_id)
+        if pane is None:
+            messagebox.showinfo("FBX Analyzer", "Load a skeleton FBX first.", parent=self.root)
+            return
+
+        anim_in = filedialog.askopenfilename(
+            parent=self.root,
+            title="Select Animation FBX to Patch",
+            filetypes=[("FBX files", "*.fbx"), ("All files", "*.*")],
+        )
+        if not anim_in:
+            return
+
+        out_path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save Patched Animation As...",
+            defaultextension=".fbx",
+            filetypes=[("FBX files", "*.fbx"), ("All files", "*.*")],
+            initialfile=Path(anim_in).with_name(Path(anim_in).stem + "_patched.fbx").name,
+        )
+        if not out_path:
+            return
+
         try:
-            debug_path.write_text(
-                json.dumps(asdict(diagnostics), indent=2),
-                encoding="utf-8",
-            )
-            return debug_path
+            from ..tools.add_root_track import add_missing_root_track
+            add_missing_root_track(pane.document.path, anim_in, out_path)
+        except Exception as exc:
+            self._logger.error("action: patch_root_track_failed | skel=%s | anim=%s | error=%s", pane.document.path, anim_in, str(exc))
+            messagebox.showerror("FBX Analyzer", f"Patch failed: {exc}", parent=self.root)
+            return
+
+        self._logger.info("action: patch_root_track_success | skel=%s | anim=%s | out=%s", pane.document.path, anim_in, out_path)
+        messagebox.showinfo("FBX Analyzer", f"Patched animation saved to\n{out_path}", parent=self.root)
+
+    def _on_conform_animation_clicked(self) -> None:
+        tab_id = self.notebook.select()
+        if not tab_id:
+            messagebox.showinfo("FBX Analyzer", "Load a skeleton FBX first.", parent=self.root)
+            return
+        pane = self.document_tabs.get(tab_id)
+        if pane is None:
+            messagebox.showinfo("FBX Analyzer", "Load a skeleton FBX first.", parent=self.root)
+            return
+
+        anim_in = filedialog.askopenfilename(
+            parent=self.root,
+            title="Select Animation FBX to Conform",
+            filetypes=[("FBX files", "*.fbx"), ("All files", "*.*")],
+        )
+        if not anim_in:
+            return
+
+        out_path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Save Conformed Animation As...",
+            defaultextension=".fbx",
+            filetypes=[("FBX files", "*.fbx"), ("All files", "*.*")],
+            initialfile=Path(anim_in).with_name(Path(anim_in).stem + "_conformed.fbx").name,
+        )
+        if not out_path:
+            return
+
+        try:
+            from ..tools.conform_anim_to_skeleton import conform_animation_to_skeleton
+            conform_animation_to_skeleton(pane.document.path, anim_in, out_path)
+        except Exception as exc:
+            self._logger.error("action: conform_animation_failed | skel=%s | anim=%s | error=%s", pane.document.path, anim_in, str(exc))
+            messagebox.showerror("FBX Analyzer", f"Conform failed: {exc}", parent=self.root)
+            return
+
+        self._logger.info("action: conform_animation_success | skel=%s | anim=%s | out=%s", pane.document.path, anim_in, out_path)
+        messagebox.showinfo("FBX Analyzer", f"Conformed animation saved to\n{out_path}", parent=self.root)
+
+    def _write_diagnostic_log(
+        self,
+        *,
+        diagnostics: SceneExportDiagnostics,
+        src_path: Path,
+        dst_path: Path,
+        succeeded: bool,
+        error_message: Optional[str],
+    ) -> Optional[Path]:
+        """Write detailed diagnostics to logs for Save As operations (debug mode)."""
+
+        op_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = src_path.name or "scene"
+        diag_path = self._logs_dir / f"{self._session_ts}_diagnostic_{op_ts}_{base}.json"
+        payload = asdict(diagnostics)
+        payload["operation"] = "save_as"
+        payload["source_path"] = str(src_path)
+        payload["target_path"] = str(dst_path)
+        payload["timestamp"] = op_ts
+        payload["succeeded"] = bool(succeeded)
+        if error_message:
+            payload["error"] = str(error_message)
+        try:
+            diag_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            return diag_path
+        except Exception:
+            return None
+
+    def _write_error_log(
+        self,
+        *,
+        src_path: Path,
+        dst_path: Path,
+        error_message: str,
+        diagnostics: Optional[SceneExportDiagnostics] = None,
+    ) -> Optional[Path]:
+        """Write a compact error summary log when debug mode is on and errors occur."""
+
+        op_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = src_path.name or "scene"
+        err_path = self._logs_dir / f"{self._session_ts}_errors_{op_ts}_{base}.json"
+        summary: Dict[str, Any] = {
+            "operation": "save_as",
+            "timestamp": op_ts,
+            "source_path": str(src_path),
+            "target_path": str(dst_path),
+            "error": error_message,
+        }
+        # Include brief validation summaries if available without dumping the full diagnostics
+        try:
+            if diagnostics is not None:
+                before = diagnostics.validation_report_before or {}
+                after = diagnostics.validation_report_after or {}
+                def _extract_status(report_dict: Dict[str, Any]) -> Dict[str, str]:
+                    cats = report_dict.get("categories", {}) if isinstance(report_dict, dict) else {}
+                    return {name: cat.get("status", "?") for name, cat in cats.items()} if isinstance(cats, dict) else {}
+                summary["validation_status_before"] = _extract_status(before)
+                summary["validation_status_after"] = _extract_status(after)
+                if diagnostics.auto_repairs:
+                    # List only actions applied, not the full issue lists
+                    summary["repairs_applied"] = list(diagnostics.auto_repairs)
+        except Exception:
+            pass
+        try:
+            err_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            return err_path
         except Exception:
             return None
 
@@ -1271,6 +1537,18 @@ class FBXAnalyzerApp:
                     metadata_inspector,
                 ])
         except (FBXSDKNotAvailableError, FBXLoadError) as exc:
+            self._logger.error("action: analyze_failed | file=%s | error=%s", path, str(exc))
+            # When debug mode is on, write a compact error log for analysis failures
+            if self._debug_mode.get():
+                try:
+                    self._write_error_log(
+                        src_path=Path(path),
+                        dst_path=Path(path),  # not a save, but include path for consistency
+                        error_message=str(exc),
+                        diagnostics=None,
+                    )
+                except Exception:
+                    pass
             messagebox.showerror("FBX Analyzer", str(exc), parent=self.root)
             return None
 
@@ -1288,13 +1566,17 @@ class FBXAnalyzerApp:
         )
 
     def _add_document_tab(self, document: AnalyzedScene) -> None:
-        pane = DocumentPane(self.notebook, document)
+        pane = DocumentPane(self.notebook, document, bake_on_promote_var=self._bake_on_promote)
         tab_text = Path(document.path).name or document.path
         self.notebook.add(pane.frame, text=tab_text)
         tab_id = str(pane.frame)
         self.document_tabs[tab_id] = pane
         self.notebook.select(pane.frame)
         self._update_status()
+        try:
+            self._logger.info("action: open_document | doc=%s", document.path)
+        except Exception:
+            pass
 
     def _update_status(self) -> None:
         count = len(self.document_tabs)

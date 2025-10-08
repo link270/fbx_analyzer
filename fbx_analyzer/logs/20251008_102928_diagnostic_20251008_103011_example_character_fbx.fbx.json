@@ -1,0 +1,2291 @@
+{
+  "mode": "rebuild",
+  "reused_root_uid": 329,
+  "source_child_count": 2,
+  "created_nodes": [],
+  "reparented_nodes": [
+    {
+      "node": {
+        "name": "RootNode",
+        "uid": 329
+      },
+      "previous_parent": null,
+      "new_parent": {
+        "name": "RootNode",
+        "uid": 329
+      }
+    }
+  ],
+  "removed_orphans": [],
+  "pruned_nodes": [],
+  "attribute_updates": [
+    {
+      "node": {
+        "name": "RootNode",
+        "uid": 329
+      },
+      "attribute_type": "None",
+      "attribute_class": "(NoAttribute)"
+    },
+    {
+      "node": {
+        "name": "exampleCharacter_BODY",
+        "uid": 428
+      },
+      "attribute_type": "Null",
+      "attribute_class": "FbxNull"
+    },
+    {
+      "node": {
+        "name": "Hips",
+        "uid": 430
+      },
+      "attribute_type": "Root",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "Spine",
+        "uid": 431
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "Spine1",
+        "uid": 432
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "Spine2",
+        "uid": 433
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "Neck",
+        "uid": 434
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "Head",
+        "uid": 435
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightEye",
+        "uid": 436
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightEye_end",
+        "uid": 484
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftEye",
+        "uid": 437
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftEye_end",
+        "uid": 485
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftShoulder",
+        "uid": 438
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftArm",
+        "uid": 439
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftForeArm",
+        "uid": 440
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHand",
+        "uid": 441
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle1",
+        "uid": 442
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle2",
+        "uid": 443
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle3",
+        "uid": 444
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle3_end",
+        "uid": 486
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandRing1",
+        "uid": 445
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandRing2",
+        "uid": 446
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandRing3",
+        "uid": 447
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandRing3_end",
+        "uid": 487
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky1",
+        "uid": 448
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky2",
+        "uid": 449
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky3",
+        "uid": 450
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky3_end",
+        "uid": 488
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex1",
+        "uid": 451
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex2",
+        "uid": 452
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex3",
+        "uid": 453
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex3_end",
+        "uid": 489
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb1",
+        "uid": 454
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb2",
+        "uid": 455
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb3",
+        "uid": 456
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb3_end",
+        "uid": 490
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightShoulder",
+        "uid": 457
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightArm",
+        "uid": 458
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightForeArm",
+        "uid": 459
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHand",
+        "uid": 460
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle1",
+        "uid": 461
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle2",
+        "uid": 462
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle3",
+        "uid": 463
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle3_end",
+        "uid": 491
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandRing1",
+        "uid": 464
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandRing2",
+        "uid": 465
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandRing3",
+        "uid": 466
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandRing3_end",
+        "uid": 492
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandPinky1",
+        "uid": 467
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandPinky2",
+        "uid": 468
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandPinky3",
+        "uid": 469
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandPinky3_end",
+        "uid": 493
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandIndex1",
+        "uid": 470
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandIndex2",
+        "uid": 471
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandIndex3",
+        "uid": 472
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandIndex3_end",
+        "uid": 494
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandThumb1",
+        "uid": 473
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandThumb2",
+        "uid": 474
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandThumb3",
+        "uid": 475
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightHandThumb3_end",
+        "uid": 495
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftUpLeg",
+        "uid": 476
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftLeg",
+        "uid": 477
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftFoot",
+        "uid": 478
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftToeBase",
+        "uid": 479
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "LeftToeBase_end",
+        "uid": 496
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightUpLeg",
+        "uid": 480
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightLeg",
+        "uid": 481
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightFoot",
+        "uid": 482
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightToeBase",
+        "uid": 483
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "RightToeBase_end",
+        "uid": 497
+      },
+      "attribute_type": "LimbNode",
+      "attribute_class": "FbxSkeleton"
+    },
+    {
+      "node": {
+        "name": "baseMesh_FACE",
+        "uid": 429
+      },
+      "attribute_type": "Mesh",
+      "attribute_class": "FbxMesh"
+    }
+  ],
+  "transform_updates": [
+    {
+      "node": {
+        "name": "RootNode",
+        "uid": 329
+      },
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "exampleCharacter_BODY",
+        "uid": 428
+      },
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        -90.00000933466734,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    },
+    {
+      "node": {
+        "name": "Hips",
+        "uid": 430
+      },
+      "translation": [
+        0.0,
+        -0.028583666309714317,
+        0.9381892085075378
+      ],
+      "rotation": [
+        76.2336332889124,
+        -0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        0.9999999403953552,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "Spine",
+        "uid": 431
+      },
+      "translation": [
+        4.440892098500626e-16,
+        0.11218655109405518,
+        -2.8870999813079834e-08
+      ],
+      "rotation": [
+        14.229366395059769,
+        1.324127629342693e-05,
+        3.3577796665356556e-06
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "Spine1",
+        "uid": 432
+      },
+      "translation": [
+        3.0859951367315924e-17,
+        0.13518452644348145,
+        -2.0954757928848267e-09
+      ],
+      "rotation": [
+        25.1972594048305,
+        -1.299832242330754e-06,
+        5.815710899482164e-06
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999999403953552,
+        0.9999998211860657
+      ]
+    },
+    {
+      "node": {
+        "name": "Spine2",
+        "uid": 433
+      },
+      "translation": [
+        -1.686897624082577e-14,
+        0.058712754398584366,
+        -7.450580596923828e-09
+      ],
+      "rotation": [
+        -36.991597620209966,
+        -2.7495025021491253e-06,
+        -8.219420443330081e-06
+      ],
+      "scaling": [
+        1.000000238418579,
+        0.9999998807907104,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "Neck",
+        "uid": 434
+      },
+      "translation": [
+        -6.146232848570129e-15,
+        0.21812203526496887,
+        7.916241884231567e-08
+      ],
+      "rotation": [
+        49.65218994500192,
+        -4.816296957255986e-06,
+        1.0410958390376687e-05
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999998807907104,
+        1.000000238418579
+      ]
+    },
+    {
+      "node": {
+        "name": "Head",
+        "uid": 435
+      },
+      "translation": [
+        4.4359328900010417e-14,
+        0.0828121230006218,
+        -1.3597309589385986e-07
+      ],
+      "rotation": [
+        -89.99995469315398,
+        51.67913737366242,
+        -89.99995469315398
+      ],
+      "scaling": [
+        1.0,
+        0.9999999403953552,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "RightEye",
+        "uid": 436
+      },
+      "translation": [
+        -0.06310397386550903,
+        0.08590398728847504,
+        -0.029999982565641403
+      ],
+      "rotation": [
+        -89.99977027804638,
+        87.13761365729839,
+        0.0002418444910180511
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999998211860657,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "RightEye_end",
+        "uid": 484
+      },
+      "translation": [
+        0.0,
+        0.10012492537498474,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftEye",
+        "uid": 437
+      },
+      "translation": [
+        -0.06310397386550903,
+        0.08590398728847504,
+        0.030000023543834686
+      ],
+      "rotation": [
+        -89.9998795610731,
+        92.86242550260378,
+        -5.982500041911209e-05
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999998807907104,
+        0.9999999403953552
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftEye_end",
+        "uid": 485
+      },
+      "translation": [
+        0.0,
+        0.10012492537498474,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftShoulder",
+        "uid": 438
+      },
+      "translation": [
+        0.08030213415622711,
+        0.12508848309516907,
+        -0.012008873745799065
+      ],
+      "rotation": [
+        -7.023758011751382,
+        -77.4193131476916,
+        -63.884617118583506
+      ],
+      "scaling": [
+        1.0000001192092896,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftArm",
+        "uid": 439
+      },
+      "translation": [
+        8.562835773773259e-09,
+        0.0990719348192215,
+        -5.02739567309618e-07
+      ],
+      "rotation": [
+        -21.44305617281675,
+        -0.020778064112726907,
+        -0.061824451118255505
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        0.9999998211860657
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftForeArm",
+        "uid": 440
+      },
+      "translation": [
+        -3.0736941880604718e-09,
+        0.2581666111946106,
+        8.847564458847046e-09
+      ],
+      "rotation": [
+        4.790296398440967,
+        0.23602716524928116,
+        -4.666460799920404
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999998807907104,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHand",
+        "uid": 441
+      },
+      "translation": [
+        -1.4277929949457757e-09,
+        0.2524283826351166,
+        4.055982572026551e-08
+      ],
+      "rotation": [
+        -1.9019547534058492,
+        -0.025264818046550928,
+        -0.7638114104243576
+      ],
+      "scaling": [
+        1.000000238418579,
+        1.000000238418579,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle1",
+        "uid": 442
+      },
+      "translation": [
+        -0.000269819371169433,
+        0.10846743732690811,
+        -0.0057958876714110374
+      ],
+      "rotation": [
+        2.4920431837769885,
+        -0.00012056299773575537,
+        7.70055932217383
+      ],
+      "scaling": [
+        1.0000001192092896,
+        0.9999998211860657,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle2",
+        "uid": 443
+      },
+      "translation": [
+        6.977529665164184e-09,
+        0.030737467110157013,
+        -3.239256329834461e-08
+      ],
+      "rotation": [
+        -6.015242587871741,
+        0.0569215225525235,
+        1.307491800314728
+      ],
+      "scaling": [
+        0.9999999403953552,
+        1.000000238418579,
+        1.000000238418579
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle3",
+        "uid": 444
+      },
+      "translation": [
+        -3.735294740181416e-09,
+        0.023680459707975388,
+        1.707230694591999e-07
+      ],
+      "rotation": [
+        -0.0014559054310221314,
+        -0.0011074392597666973,
+        8.291375032621916e-05
+      ],
+      "scaling": [
+        0.9999999403953552,
+        0.9999996423721313,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandMiddle3_end",
+        "uid": 486
+      },
+      "translation": [
+        0.0,
+        0.02368038333952427,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandRing1",
+        "uid": 445
+      },
+      "translation": [
+        -0.023605957627296448,
+        0.09679993242025375,
+        -0.00850757583975792
+      ],
+      "rotation": [
+        3.4310475590299983,
+        -0.00013522278472556407,
+        9.16641012561236
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999998211860657,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandRing2",
+        "uid": 446
+      },
+      "translation": [
+        -9.119041521898907e-09,
+        0.028124075382947922,
+        -1.459266059100628e-07
+      ],
+      "rotation": [
+        -6.7856256007730025,
+        0.44373633951926306,
+        7.421531580426822
+      ],
+      "scaling": [
+        0.9999998211860657,
+        0.9999998807907104,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandRing3",
+        "uid": 447
+      },
+      "translation": [
+        -2.0050862303833128e-08,
+        0.023561732843518257,
+        6.507616490125656e-08
+      ],
+      "rotation": [
+        -0.00028517334723469575,
+        -0.00015290200651933806,
+        -0.00028012407652991097
+      ],
+      "scaling": [
+        1.0000004768371582,
+        1.000000238418579,
+        0.9999999403953552
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandRing3_end",
+        "uid": 487
+      },
+      "translation": [
+        0.0,
+        0.023561779409646988,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky1",
+        "uid": 448
+      },
+      "translation": [
+        -0.039992522448301315,
+        0.08381832391023636,
+        -0.013745405711233616
+      ],
+      "rotation": [
+        -1.0785669112243494,
+        -4.021924144101853e-05,
+        34.92968986828276
+      ],
+      "scaling": [
+        1.0000001192092896,
+        0.9999999403953552,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky2",
+        "uid": 449
+      },
+      "translation": [
+        -2.3595760012540268e-08,
+        0.01917397603392601,
+        1.5762634575366974e-07
+      ],
+      "rotation": [
+        -2.413991623923491,
+        0.04307733941966259,
+        -2.278385475028881
+      ],
+      "scaling": [
+        0.9999999403953552,
+        1.0000001192092896,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky3",
+        "uid": 450
+      },
+      "translation": [
+        2.9728653316851705e-08,
+        0.018797393888235092,
+        9.802170097827911e-08
+      ],
+      "rotation": [
+        -0.0003565036757772035,
+        -9.010935581536238e-05,
+        -0.00019882457016894806
+      ],
+      "scaling": [
+        0.9999998807907104,
+        1.0000001192092896,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandPinky3_end",
+        "uid": 488
+      },
+      "translation": [
+        0.0,
+        0.018797459080815315,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex1",
+        "uid": 451
+      },
+      "translation": [
+        0.023063281551003456,
+        0.10089079290628433,
+        -0.008814780972898006
+      ],
+      "rotation": [
+        5.187678085012778,
+        -0.0001706580387595583,
+        -5.032097474777289
+      ],
+      "scaling": [
+        1.0000001192092896,
+        0.9999999403953552,
+        1.000000238418579
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex2",
+        "uid": 452
+      },
+      "translation": [
+        2.6501538741285913e-09,
+        0.03224628046154976,
+        -1.621665433049202e-07
+      ],
+      "rotation": [
+        -9.657690264685746,
+        0.42344662225950547,
+        4.673745623557046
+      ],
+      "scaling": [
+        0.9999998211860657,
+        0.9999998211860657,
+        0.9999999403953552
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex3",
+        "uid": 453
+      },
+      "translation": [
+        -2.5029294192790985e-09,
+        0.022414421662688255,
+        -4.9261871026828885e-08
+      ],
+      "rotation": [
+        0.001225970389303525,
+        0.001385741433152866,
+        4.632548629087728e-05
+      ],
+      "scaling": [
+        1.000000238418579,
+        1.0000001192092896,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandIndex3_end",
+        "uid": 489
+      },
+      "translation": [
+        0.0,
+        0.022414417937397957,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb1",
+        "uid": 454
+      },
+      "translation": [
+        0.028331611305475235,
+        0.03987516090273857,
+        -0.020045561715960503
+      ],
+      "rotation": [
+        2.481628212509777,
+        -0.0002062783491693613,
+        -54.179239326886375
+      ],
+      "scaling": [
+        0.9999999403953552,
+        0.9999999403953552,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb2",
+        "uid": 455
+      },
+      "translation": [
+        -2.0628831975955109e-07,
+        0.030048595741391182,
+        3.791064955294132e-07
+      ],
+      "rotation": [
+        -11.77695282262084,
+        0.8338437412228784,
+        19.62308396657515
+      ],
+      "scaling": [
+        0.9999998211860657,
+        1.0,
+        0.9999998211860657
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb3",
+        "uid": 456
+      },
+      "translation": [
+        4.7843684569670586e-08,
+        0.026196645572781563,
+        -3.2479874789714813e-07
+      ],
+      "rotation": [
+        3.3083315574585046e-06,
+        0.0001187836295492125,
+        -4.005915236857037e-05
+      ],
+      "scaling": [
+        0.9999998807907104,
+        1.0,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftHandThumb3_end",
+        "uid": 490
+      },
+      "translation": [
+        0.0,
+        0.026196539402008057,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightShoulder",
+        "uid": 457
+      },
+      "translation": [
+        -0.08030210435390472,
+        0.12508848309516907,
+        -0.012008910067379475
+      ],
+      "rotation": [
+        -7.023894615534782,
+        77.41932680806994,
+        63.88452832612429
+      ],
+      "scaling": [
+        1.0,
+        0.9999997615814209,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "RightArm",
+        "uid": 458
+      },
+      "translation": [
+        -6.176193778628658e-09,
+        0.09907183051109314,
+        -6.420304998755455e-08
+      ],
+      "rotation": [
+        -21.442975918094,
+        0.0207302144354238,
+        0.061826839016422365
+      ],
+      "scaling": [
+        0.9999999403953552,
+        1.000000238418579,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightForeArm",
+        "uid": 459
+      },
+      "translation": [
+        -1.1892495876963949e-09,
+        0.25816673040390015,
+        6.126356311142445e-09
+      ],
+      "rotation": [
+        4.790186688527424,
+        -0.23591822906810475,
+        4.666473179638276
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        0.9999997615814209
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHand",
+        "uid": 460
+      },
+      "translation": [
+        1.8840466964320512e-09,
+        0.25242847204208374,
+        2.500019036233425e-08
+      ],
+      "rotation": [
+        -1.9021639279491807,
+        0.02547195653983946,
+        0.7637891055878493
+      ],
+      "scaling": [
+        0.9999999403953552,
+        1.000000238418579,
+        1.000000238418579
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle1",
+        "uid": 461
+      },
+      "translation": [
+        0.0002698398020584136,
+        0.10846773535013199,
+        -0.005795897915959358
+      ],
+      "rotation": [
+        2.492358012809044,
+        -0.00012012131161358567,
+        -7.700554199531952
+      ],
+      "scaling": [
+        0.9999997615814209,
+        0.9999998807907104,
+        0.9999999403953552
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle2",
+        "uid": 462
+      },
+      "translation": [
+        1.133400928665651e-09,
+        0.030737606808543205,
+        1.5328987501561642e-07
+      ],
+      "rotation": [
+        -6.015570436951902,
+        -0.05663887011476133,
+        -1.3074944683573726
+      ],
+      "scaling": [
+        0.9999999403953552,
+        0.9999999403953552,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle3",
+        "uid": 463
+      },
+      "translation": [
+        -9.222731023328379e-09,
+        0.023680154234170914,
+        -6.373738870024681e-08
+      ],
+      "rotation": [
+        0.0005768947068636198,
+        -0.0006277004399303299,
+        -8.144568200790146e-05
+      ],
+      "scaling": [
+        1.0000003576278687,
+        0.9999998807907104,
+        0.9999999403953552
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandMiddle3_end",
+        "uid": 491
+      },
+      "translation": [
+        0.0,
+        0.023680096492171288,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandRing1",
+        "uid": 464
+      },
+      "translation": [
+        0.023605991154909134,
+        0.09680001437664032,
+        -0.008507650345563889
+      ],
+      "rotation": [
+        3.431431330283988,
+        -0.00015557880367880167,
+        -9.166423785990702
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999997615814209,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandRing2",
+        "uid": 465
+      },
+      "translation": [
+        1.213106770592276e-08,
+        0.028123730793595314,
+        8.14325176179409e-08
+      ],
+      "rotation": [
+        -6.785344709243386,
+        -0.44395111695214823,
+        -7.421521335143067
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        0.9999998807907104
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandRing3",
+        "uid": 466
+      },
+      "translation": [
+        6.638401828240603e-09,
+        0.023562084883451462,
+        1.6740523278713226e-07
+      ],
+      "rotation": [
+        -0.0008730486910521311,
+        0.0005924053623555896,
+        0.0002914012205666837
+      ],
+      "scaling": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandRing3_end",
+        "uid": 492
+      },
+      "translation": [
+        0.0,
+        0.02356204204261303,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandPinky1",
+        "uid": 467
+      },
+      "translation": [
+        0.03999257832765579,
+        0.08381837606430054,
+        -0.013745586387813091
+      ],
+      "rotation": [
+        -1.078176416502895,
+        -3.755466412530772e-05,
+        -34.92952252864809
+      ],
+      "scaling": [
+        0.9999998807907104,
+        1.0,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandPinky2",
+        "uid": 468
+      },
+      "translation": [
+        1.6988224160741083e-08,
+        0.019173650071024895,
+        -6.111804395914078e-08
+      ],
+      "rotation": [
+        -2.415771101645691,
+        -0.04210776271747821,
+        2.2778207037618854
+      ],
+      "scaling": [
+        0.9999996423721313,
+        1.0,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandPinky3",
+        "uid": 469
+      },
+      "translation": [
+        -2.2811946109868586e-08,
+        0.018797606229782104,
+        1.3667158782482147e-07
+      ],
+      "rotation": [
+        0.002177706640710888,
+        -0.0012985558443135386,
+        0.00031300916120964123
+      ],
+      "scaling": [
+        1.0,
+        0.9999997019767761,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandPinky3_end",
+        "uid": 493
+      },
+      "translation": [
+        0.0,
+        0.018797501921653748,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandIndex1",
+        "uid": 470
+      },
+      "translation": [
+        -0.023063238710165024,
+        0.1008908599615097,
+        -0.008814947679638863
+      ],
+      "rotation": [
+        5.187976478902144,
+        -0.00019862656440647588,
+        5.032091925248588
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999999403953552,
+        1.000000238418579
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandIndex2",
+        "uid": 471
+      },
+      "translation": [
+        -3.7971403799019754e-11,
+        0.0322461761534214,
+        -1.3387762010097504e-09
+      ],
+      "rotation": [
+        -9.656937236329751,
+        -0.42417875984159265,
+        -4.673527057503606
+      ],
+      "scaling": [
+        0.9999999403953552,
+        0.9999999403953552,
+        0.9999997615814209
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandIndex3",
+        "uid": 472
+      },
+      "translation": [
+        -2.1464074961841106e-10,
+        0.022414548322558403,
+        -1.3462886272463948e-07
+      ],
+      "rotation": [
+        -0.001531665335677064,
+        0.0014037722946295566,
+        -0.00010802933979719143
+      ],
+      "scaling": [
+        1.000000238418579,
+        0.9999999403953552,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandIndex3_end",
+        "uid": 494
+      },
+      "translation": [
+        0.0,
+        0.022414542734622955,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandThumb1",
+        "uid": 473
+      },
+      "translation": [
+        -0.028331490233540535,
+        0.03987510874867439,
+        -0.02004619501531124
+      ],
+      "rotation": [
+        2.4815780533080596,
+        -0.00026793484752424534,
+        54.17919151556219
+      ],
+      "scaling": [
+        0.9999998211860657,
+        0.9999998211860657,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandThumb2",
+        "uid": 474
+      },
+      "translation": [
+        1.896967205539113e-08,
+        0.030048664659261703,
+        1.5451223589479923e-07
+      ],
+      "rotation": [
+        -11.776998926397738,
+        -0.8338098570812928,
+        -19.62298663637948
+      ],
+      "scaling": [
+        1.0,
+        1.0000001192092896,
+        1.000000238418579
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandThumb3",
+        "uid": 475
+      },
+      "translation": [
+        1.2233806501171784e-07,
+        0.0261965524405241,
+        2.4866312742233276e-07
+      ],
+      "rotation": [
+        -1.2806628102656364e-06,
+        -4.7463488552349424e-05,
+        4.8318681387544324e-06
+      ],
+      "scaling": [
+        1.000000238418579,
+        0.9999998211860657,
+        0.9999997615814209
+      ]
+    },
+    {
+      "node": {
+        "name": "RightHandThumb3_end",
+        "uid": 495
+      },
+      "translation": [
+        0.0,
+        0.026196472346782684,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftUpLeg",
+        "uid": 476
+      },
+      "translation": [
+        0.06859499216079712,
+        -0.08702586591243744,
+        -0.027053680270910263
+      ],
+      "rotation": [
+        -165.28955338593306,
+        -1.2997651488161512,
+        5.313964440784906
+      ],
+      "scaling": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000007152557373
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftLeg",
+        "uid": 477
+      },
+      "translation": [
+        5.1980091342329615e-09,
+        0.3806758522987366,
+        -2.6775524020195007e-09
+      ],
+      "rotation": [
+        5.164066121052044,
+        0.13252946883863664,
+        7.581084799438321
+      ],
+      "scaling": [
+        0.9999998807907104,
+        0.9999998211860657,
+        0.9999996423721313
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftFoot",
+        "uid": 478
+      },
+      "translation": [
+        1.0359112678770543e-08,
+        0.4007722735404968,
+        3.899913281202316e-09
+      ],
+      "rotation": [
+        73.56746894639792,
+        167.80843152918538,
+        -0.7891444753342292
+      ],
+      "scaling": [
+        1.0,
+        0.9999995231628418,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftToeBase",
+        "uid": 479
+      },
+      "translation": [
+        -2.269144872002471e-09,
+        0.13449089229106903,
+        -1.7695128917694092e-08
+      ],
+      "rotation": [
+        22.480683143599453,
+        3.452334270465166,
+        -8.27948615622411
+      ],
+      "scaling": [
+        0.9999997019767761,
+        1.0000003576278687,
+        0.999999463558197
+      ]
+    },
+    {
+      "node": {
+        "name": "LeftToeBase_end",
+        "uid": 496
+      },
+      "translation": [
+        0.0,
+        0.13449104130268097,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "RightUpLeg",
+        "uid": 480
+      },
+      "translation": [
+        -0.0685950517654419,
+        -0.08702586591243744,
+        -0.027053682133555412
+      ],
+      "rotation": [
+        -165.28953972555473,
+        1.2998186163907477,
+        -5.313951634180213
+      ],
+      "scaling": [
+        0.9999998211860657,
+        1.0,
+        0.999998152256012
+      ]
+    },
+    {
+      "node": {
+        "name": "RightLeg",
+        "uid": 481
+      },
+      "translation": [
+        -6.339452518488997e-09,
+        0.38067594170570374,
+        -1.0040821507573128e-09
+      ],
+      "rotation": [
+        5.164068682372983,
+        -0.13252330566012777,
+        -7.581100167363953
+      ],
+      "scaling": [
+        0.9999997615814209,
+        0.9999998211860657,
+        0.9999997019767761
+      ]
+    },
+    {
+      "node": {
+        "name": "RightFoot",
+        "uid": 482
+      },
+      "translation": [
+        -8.81556339038525e-09,
+        0.40077242255210876,
+        4.511093720793724e-09
+      ],
+      "rotation": [
+        73.56753724828963,
+        -167.80840420842873,
+        0.7892159255162499
+      ],
+      "scaling": [
+        1.0,
+        0.9999997019767761,
+        1.0000001192092896
+      ]
+    },
+    {
+      "node": {
+        "name": "RightToeBase",
+        "uid": 483
+      },
+      "translation": [
+        -1.1881960304549466e-08,
+        0.13449116051197052,
+        -8.381903171539307e-09
+      ],
+      "rotation": [
+        22.480664360579237,
+        -3.452258498054061,
+        8.27944090622086
+      ],
+      "scaling": [
+        0.9999997019767761,
+        1.000000238418579,
+        0.9999993443489075
+      ]
+    },
+    {
+      "node": {
+        "name": "RightToeBase_end",
+        "uid": 497
+      },
+      "translation": [
+        0.0,
+        0.1344909816980362,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "node": {
+        "name": "baseMesh_FACE",
+        "uid": 429
+      },
+      "translation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        -90.00000933466734,
+        0.0,
+        0.0
+      ],
+      "scaling": [
+        100.0,
+        100.0,
+        100.0
+      ]
+    }
+  ],
+  "validation_report_before": {
+    "categories": {
+      "globals": {
+        "name": "GlobalSettings",
+        "status": "WARN",
+        "issues": [
+          {
+            "severity": "WARN",
+            "message": "Custom frame rate does not match canonical export configuration.",
+            "code": "globals.frame_rate",
+            "object_path": "<globals>",
+            "fix_applied": "Unable to set custom frame rate; setter unavailable."
+          }
+        ]
+      },
+      "nodes": {
+        "name": "NodesAndTransforms",
+        "status": "PASS",
+        "issues": []
+      },
+      "geometry": {
+        "name": "Geometry",
+        "status": "PASS",
+        "issues": []
+      },
+      "skin": {
+        "name": "SkinningAndPoses",
+        "status": "FAIL",
+        "issues": [
+          {
+            "severity": "FAIL",
+            "message": "Skin cluster has empty weights.",
+            "code": "skin.cluster_weights",
+            "object_path": "/RootNode/baseMesh_FACE",
+            "fix_applied": null
+          },
+          {
+            "severity": "FAIL",
+            "message": "Skin cluster has empty weights.",
+            "code": "skin.cluster_weights",
+            "object_path": "/RootNode/baseMesh_FACE",
+            "fix_applied": null
+          }
+        ]
+      },
+      "materials": {
+        "name": "MaterialsAndTextures",
+        "status": "PASS",
+        "issues": []
+      },
+      "animation": {
+        "name": "Animation",
+        "status": "WARN",
+        "issues": [
+          {
+            "severity": "WARN",
+            "message": "Scene has no animation stacks.",
+            "code": "animation.no_stacks",
+            "object_path": "<animation>",
+            "fix_applied": null
+          }
+        ]
+      },
+      "constraints": {
+        "name": "Constraints",
+        "status": "PASS",
+        "issues": []
+      },
+      "connections": {
+        "name": "Connections",
+        "status": "PASS",
+        "issues": []
+      }
+    },
+    "repairs": [],
+    "metrics": {
+      "node_count": 71,
+      "mesh_metrics": {
+        "/RootNode/baseMesh_FACE": {
+          "control_points": 9601,
+          "polygon_count": 9602,
+          "layer_elements": {
+            "normals:0": 38402,
+            "uv0:0": 10438,
+            "vcolor:0": 1,
+            "materials:0": 1
+          }
+        }
+      },
+      "material_count": 1,
+      "texture_count": 4,
+      "skin_cluster_count": 54,
+      "bind_pose_count": 2,
+      "anim_stack_count": 0,
+      "anim_curve_count": 0
+    }
+  },
+  "validation_report_after": {
+    "categories": {
+      "globals": {
+        "name": "GlobalSettings",
+        "status": "WARN",
+        "issues": [
+          {
+            "severity": "WARN",
+            "message": "Custom frame rate does not match canonical export configuration.",
+            "code": "globals.frame_rate",
+            "object_path": "<globals>",
+            "fix_applied": null
+          }
+        ]
+      },
+      "nodes": {
+        "name": "NodesAndTransforms",
+        "status": "PASS",
+        "issues": []
+      },
+      "geometry": {
+        "name": "Geometry",
+        "status": "PASS",
+        "issues": []
+      },
+      "skin": {
+        "name": "SkinningAndPoses",
+        "status": "FAIL",
+        "issues": [
+          {
+            "severity": "FAIL",
+            "message": "Skin cluster has empty weights.",
+            "code": "skin.cluster_weights",
+            "object_path": "/RootNode/baseMesh_FACE",
+            "fix_applied": null
+          },
+          {
+            "severity": "FAIL",
+            "message": "Skin cluster has empty weights.",
+            "code": "skin.cluster_weights",
+            "object_path": "/RootNode/baseMesh_FACE",
+            "fix_applied": null
+          }
+        ]
+      },
+      "materials": {
+        "name": "MaterialsAndTextures",
+        "status": "PASS",
+        "issues": []
+      },
+      "animation": {
+        "name": "Animation",
+        "status": "WARN",
+        "issues": [
+          {
+            "severity": "WARN",
+            "message": "Scene has no animation stacks.",
+            "code": "animation.no_stacks",
+            "object_path": "<animation>",
+            "fix_applied": null
+          }
+        ]
+      },
+      "constraints": {
+        "name": "Constraints",
+        "status": "PASS",
+        "issues": []
+      },
+      "connections": {
+        "name": "Connections",
+        "status": "PASS",
+        "issues": []
+      }
+    },
+    "repairs": [],
+    "metrics": {
+      "node_count": 71,
+      "mesh_metrics": {
+        "/RootNode/baseMesh_FACE": {
+          "control_points": 9601,
+          "polygon_count": 9602,
+          "layer_elements": {
+            "normals:0": 38402,
+            "uv0:0": 10438,
+            "vcolor:0": 1,
+            "materials:0": 1
+          }
+        }
+      },
+      "material_count": 1,
+      "texture_count": 4,
+      "skin_cluster_count": 54,
+      "bind_pose_count": 2,
+      "anim_stack_count": 0,
+      "anim_curve_count": 0
+    }
+  },
+  "auto_repairs": [
+    {
+      "object": "<globals>",
+      "action": "Unable to set custom frame rate; setter unavailable."
+    }
+  ],
+  "roundtrip_report": {},
+  "operation": "save_as",
+  "source_path": "C:\\Users\\mitch\\Downloads\\FlowAnimationStuff\\example_character_fbx.fbx",
+  "target_path": "C:\\Users\\mitch\\Downloads\\FlowAnimationStuff\\example_character_HipsRoot.fbx",
+  "timestamp": "20251008_103011",
+  "succeeded": false,
+  "error": "Scene validation failed after auto-repair: globals: WARN, nodes: PASS, geometry: PASS, skin: FAIL, materials: PASS, animation: WARN, constraints: PASS, connections: PASS"
+}

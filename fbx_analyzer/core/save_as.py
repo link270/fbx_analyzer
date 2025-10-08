@@ -135,6 +135,9 @@ def save_scene_graph_as(
         if scene_graph is not None:
             _apply_scene_graph_changes(scene, scene_graph, diagnostics)
 
+        # Ensure Unreal‑friendly data is present prior to export (e.g. smoothing groups)
+        _ensure_smoothing_groups(scene)
+
         validator = SceneValidator(scene)
         validation_report = validator.validate()
         diagnostics.validation_report_before = validation_report.to_dict()
@@ -292,6 +295,128 @@ def _apply_scene_graph_changes(
     sync(scene_graph, scene_root)
 
     _prune_unused_nodes(scene_root, existing_nodes, used_uids, diagnostics)
+
+
+def _ensure_smoothing_groups(scene) -> None:  # type: ignore[valid-type]
+    """Ensure each mesh has a Smoothing layer element so importers (e.g., UE) don't warn.
+
+    Creates a per‑polygon smoothing element (all faces in group "1") when missing or empty.
+    """
+
+    fbx, _ = sdk.import_fbx_module()
+
+    def iter_nodes(node):
+        yield node
+        for i in range(node.GetChildCount()):
+            yield from iter_nodes(node.GetChild(i))
+
+    root = scene.GetRootNode()
+    if root is None:
+        return
+
+    for node in iter_nodes(root):
+        attr = node.GetNodeAttribute()
+        if not attr or not isinstance(attr, fbx.FbxMesh):
+            continue
+        mesh = attr
+
+        # Detect if any layer already has smoothing with non‑empty data
+        need_create = True
+        for li in range(mesh.GetLayerCount()):
+            layer = mesh.GetLayer(li)
+            if not layer:
+                continue
+            smoothing = layer.GetSmoothing()
+            if smoothing is not None:
+                try:
+                    direct = smoothing.GetDirectArray() if hasattr(smoothing, "GetDirectArray") else None
+                    if direct is not None and getattr(direct, "GetCount", lambda: 0)() > 0:
+                        need_create = False
+                        break
+                except Exception:
+                    # If array access fails, assume present and skip
+                    need_create = False
+                    break
+
+        if not need_create:
+            continue
+
+        # Create or reuse first layer
+        if mesh.GetLayerCount() == 0:
+            try:
+                mesh.CreateLayer()
+            except Exception:
+                pass
+        layer = mesh.GetLayer(0)
+        if layer is None:
+            continue
+
+        try:
+            smoothing = fbx.FbxLayerElementSmoothing.Create(mesh, "Smoothing")
+        except Exception:
+            continue
+
+        # Configure mapping/reference
+        try:
+            smoothing.SetMappingMode(fbx.FbxLayerElement.eByPolygon)
+        except Exception:
+            pass
+        try:
+            smoothing.SetReferenceMode(fbx.FbxLayerElement.eDirect)
+        except Exception:
+            pass
+
+        # Fill one value per polygon (True/1)
+        poly_count = 0
+        try:
+            poly_count = int(mesh.GetPolygonCount())
+        except Exception:
+            poly_count = 0
+
+        try:
+            direct = smoothing.GetDirectArray()
+        except Exception:
+            direct = None
+
+        if direct is not None and poly_count > 0:
+            # Try to resize then set; fall back to Add
+            resized = False
+            for method_name in ("Resize", "SetCount"):
+                m = getattr(direct, method_name, None)
+                if callable(m):
+                    try:
+                        m(poly_count)
+                        resized = True
+                        break
+                    except Exception:
+                        pass
+            if resized:
+                setter = getattr(direct, "SetAt", None)
+                for i in range(poly_count):
+                    try:
+                        (setter(i, True) if setter else direct.SetAt(i, 1))  # type: ignore[attr-defined]
+                    except Exception:
+                        # Fallback to Add path if SetAt not supported
+                        try:
+                            add = getattr(direct, "Add", None)
+                            if callable(add):
+                                add(True)
+                        except Exception:
+                            break
+            else:
+                add = getattr(direct, "Add", None)
+                if callable(add):
+                    try:
+                        for _ in range(poly_count):
+                            add(True)
+                    except Exception:
+                        pass
+
+        # Attach to layer
+        try:
+            layer.SetSmoothing(smoothing)
+        except Exception:
+            pass
 
 
 def _map_scene_nodes(root) -> Tuple[Dict[int, Any], Dict[Tuple[int, ...], Any]]:  # type: ignore[valid-type]
