@@ -130,6 +130,32 @@ def _collect_anim_layers(scene, fbx_module) -> List[Any]:  # type: ignore[name-d
     return layers
 
 
+def _ensure_layer(scene):  # type: ignore[valid-type]
+    fbx_module, _ = sdk.import_fbx_module()
+    stack = None
+    try:
+        crit = fbx_module.FbxCriteria.ObjectType(fbx_module.FbxAnimStack.ClassId)
+        if scene.GetSrcObjectCount(crit) > 0:
+            stack = scene.GetSrcObject(crit, 0)
+    except Exception:
+        stack = None
+    if stack is None:
+        stack = fbx_module.FbxAnimStack.Create(scene, "AnimStack")
+    layer = None
+    try:
+        if hasattr(stack, "GetMemberCount") and stack.GetMemberCount() > 0:
+            layer = stack.GetMember(0)
+    except Exception:
+        layer = None
+    if layer is None:
+        layer = fbx_module.FbxAnimLayer.Create(scene, "BaseLayer")
+        try:
+            stack.AddMember(layer)
+        except Exception:
+            pass
+    return layer
+
+
 def _node_has_any_curve(node, layers: List[Any]) -> bool:  # type: ignore[valid-type]
     props = (node.LclTranslation, node.LclRotation, node.LclScaling)
     for layer in layers:
@@ -214,8 +240,12 @@ def _deduplicate_nodes_by_name(
                     pass
 
 
-def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
+def _ensure_trs_keys(node, layer, *, include_scale: bool = True):  # type: ignore[valid-type]
     fbx_module, _ = sdk.import_fbx_module()
+
+    translation = tuple(node.LclTranslation.Get())
+    rotation = tuple(node.LclRotation.Get())
+    scale = tuple(node.LclScaling.Get())
 
     def ensure(prop, component, value):
         try:
@@ -228,9 +258,9 @@ def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
             return
         try:
             curve.KeyModifyBegin()
-            t = fbx_module.FbxTime()
-            t.SetSecondDouble(0.0)
-            index = curve.KeyAdd(t)
+            time = fbx_module.FbxTime()
+            time.SetSecondDouble(0.0)
+            index = curve.KeyAdd(time)
             try:
                 curve.KeySetValue(index, value)
             except Exception:
@@ -243,11 +273,13 @@ def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
         except Exception:
             pass
 
-    for comp, val in (('X', 0.0), ('Y', 0.0), ('Z', 0.0)):
+    for comp, val in zip(('X', 'Y', 'Z'), translation):
         ensure(node.LclTranslation, comp, val)
+    for comp, val in zip(('X', 'Y', 'Z'), rotation):
         ensure(node.LclRotation, comp, val)
-    for comp, val in (('X', 1.0), ('Y', 1.0), ('Z', 1.0)):
-        ensure(node.LclScaling, comp, val)
+    if include_scale:
+        for comp, val in zip(('X', 'Y', 'Z'), scale):
+            ensure(node.LclScaling, comp, val)
 
 
 def _find_or_create_node(scene, name: str, *, as_skeleton: bool) -> Any:  # type: ignore[valid-type]
@@ -287,7 +319,7 @@ def _find_or_create_node(scene, name: str, *, as_skeleton: bool) -> Any:  # type
         if not (attr and isinstance(attr, fbx_module.FbxSkeleton)):
             skeleton_attr = fbx_module.FbxSkeleton.Create(scene, name or "Skeleton")
             try:
-                skeleton_attr.SetSkeletonType(getattr(fbx_module.FbxSkeleton, "eLimbNode", 1))
+                skeleton_attr.SetSkeletonType(fbx_module.FbxSkeleton.EType.eLimbNode)
             except Exception:
                 pass
             node.SetNodeAttribute(skeleton_attr)
@@ -351,17 +383,19 @@ def conform_animation_to_skeleton(skeleton_path: str, animation_path: str, outpu
 
         root_node = _find_or_create_node(scene, root_joint, as_skeleton=True)
 
-        ancestor_chain: List[Any] = []
+        removal_chain: List[Any] = []
+        top_ancestor: Optional[Any] = None
         walker = root_node
-        while walker is not None and walker is not scene_root:
+        while True:
             parent = walker.GetParent()
             if parent is None:
                 break
-            ancestor_chain.append(parent)
             if parent is scene_root:
+                if walker is not root_node:
+                    top_ancestor = walker
                 break
+            removal_chain.append(parent)
             walker = parent
-        top_ancestor = ancestor_chain[-1] if ancestor_chain and ancestor_chain[-1].GetParent() is scene_root else None
 
         container_node = None
         if container_name:
@@ -399,15 +433,17 @@ def conform_animation_to_skeleton(skeleton_path: str, animation_path: str, outpu
                     pass
                 scene_root.AddChild(container_node)
 
-            if container_trs is not None:
-                container_node.LclTranslation.Set(fbx_module.FbxDouble3(*container_trs[0]))
-                container_node.LclRotation.Set(fbx_module.FbxDouble3(*container_trs[1]))
-                scale_vals = container_trs[2]
-            elif top_ancestor is not None and top_ancestor is not container_node:
+            if top_ancestor is not None:
                 container_node.LclTranslation.Set(top_ancestor.LclTranslation.Get())
                 container_node.LclRotation.Set(top_ancestor.LclRotation.Get())
                 scale_vals = tuple(top_ancestor.LclScaling.Get())
+            elif container_trs is not None:
+                container_node.LclTranslation.Set(fbx_module.FbxDouble3(*container_trs[0]))
+                container_node.LclRotation.Set(fbx_module.FbxDouble3(*container_trs[1]))
+                scale_vals = container_trs[2]
             else:
+                container_node.LclTranslation.Set(fbx_module.FbxDouble3(0.0, 0.0, 0.0))
+                container_node.LclRotation.Set(fbx_module.FbxDouble3(0.0, 0.0, 0.0))
                 scale_vals = tuple(container_node.LclScaling.Get())
             scale_vals = tuple(1.0 if abs(v) < 1e-6 else v for v in scale_vals)
             container_node.LclScaling.Set(fbx_module.FbxDouble3(*scale_vals))
@@ -422,8 +458,24 @@ def conform_animation_to_skeleton(skeleton_path: str, animation_path: str, outpu
                 pass
             target_parent.AddChild(root_node)
 
-        for ancestor in reversed(ancestor_chain):
-            if ancestor is container_node:
+        removal_nodes: List[Any] = []
+        if top_ancestor is not None and top_ancestor is not container_node:
+            removal_nodes.append(top_ancestor)
+        removal_nodes.extend(removal_chain)
+
+        seen_nodes: Set[int] = set()
+        filtered_nodes: List[Any] = []
+        for node in removal_nodes:
+            if node is None:
+                continue
+            node_id = id(node)
+            if node_id in seen_nodes:
+                continue
+            seen_nodes.add(node_id)
+            filtered_nodes.append(node)
+
+        for ancestor in filtered_nodes:
+            if ancestor in (container_node, root_node, scene_root):
                 continue
             children = [ancestor.GetChild(i) for i in range(ancestor.GetChildCount())]
             for child in children:
@@ -442,14 +494,53 @@ def conform_animation_to_skeleton(skeleton_path: str, animation_path: str, outpu
                     pass
 
         if container_node is not None:
-            _ensure_identity_curves(container_node, anim_layer)
+            for candidate in _find_nodes_by_name(scene_root, root_joint):
+                if candidate is root_node:
+                    continue
+                if candidate.GetParent() is scene_root:
+                    try:
+                        scene_root.RemoveChild(candidate)
+                    except Exception:
+                        pass
+
+        if container_node is not None:
+            root_matches = _find_nodes_by_name(scene_root, root_joint)
+            primary_root = None
+            for candidate in root_matches:
+                if candidate.GetParent() is container_node:
+                    primary_root = candidate
+                    break
+            if primary_root is None and root_matches:
+                primary_root = root_matches[0]
+                if primary_root.GetParent() is not container_node:
+                    try:
+                        (primary_root.GetParent() or scene_root).RemoveChild(primary_root)
+                    except Exception:
+                        pass
+                    container_node.AddChild(primary_root)
+            if primary_root is not None:
+                root_node = primary_root
+            for candidate in root_matches:
+                if candidate is root_node:
+                    continue
+                if candidate.GetParent() is scene_root:
+                    try:
+                        scene_root.RemoveChild(candidate)
+                    except Exception:
+                        pass
+            _ensure_trs_keys(container_node, anim_layer)
 
         type_map = {
-            "Root": getattr(fbx_module.FbxSkeleton, "eRoot", 0),
-            "Limb": getattr(fbx_module.FbxSkeleton, "eLimb", 2),
-            "LimbNode": getattr(fbx_module.FbxSkeleton, "eLimbNode", 1),
-            "Effector": getattr(fbx_module.FbxSkeleton, "eEffector", 3),
+            "Root": fbx_module.FbxSkeleton.EType.eRoot,
+            "LimbNode": fbx_module.FbxSkeleton.EType.eLimbNode,
+            "Effector": fbx_module.FbxSkeleton.EType.eEffector,
         }
+
+        children_lookup: Dict[str, List[str]] = {}
+        for child_name, parent_name in parent_map.items():
+            if parent_name is None:
+                continue
+            children_lookup.setdefault(parent_name, []).append(child_name)
 
         for name, parent_name in parent_map.items():
             node = _find_or_create_node(scene, name, as_skeleton=True)
@@ -459,8 +550,8 @@ def conform_animation_to_skeleton(skeleton_path: str, animation_path: str, outpu
                     if name == root_joint:
                         attr.SetSkeletonType(type_map["Root"])
                     else:
-                        joint_kind = joint_type_map.get(name, "LimbNode")
-                        if joint_kind == "Effector" or name.endswith("_end"):
+                        has_children = name in children_lookup
+                        if not has_children or name.endswith("_end"):
                             attr.SetSkeletonType(type_map["Effector"])
                         else:
                             attr.SetSkeletonType(type_map["LimbNode"])
@@ -489,11 +580,28 @@ def conform_animation_to_skeleton(skeleton_path: str, animation_path: str, outpu
             except Exception:
                 pass
 
-            _ensure_identity_curves(node, anim_layer)
+            _ensure_trs_keys(node, anim_layer)
 
         _deduplicate_nodes_by_name(scene, skeleton_names, layers, prefer_skeleton=True)
         if container_node is not None and container_name:
             _deduplicate_nodes_by_name(scene, {container_name}, layers, prefer_skeleton=False)
+
+        for name in parent_map.keys():
+            matches = _find_nodes_by_name(scene_root, name)
+            if not matches:
+                continue
+            node = matches[0]
+            attr = node.GetNodeAttribute()
+            if not (attr and isinstance(attr, fbx_module.FbxSkeleton)):
+                continue
+            if name == root_joint:
+                attr.SetSkeletonType(type_map["Root"])
+            else:
+                has_children = name in children_lookup
+                if not has_children or name.endswith("_end"):
+                    attr.SetSkeletonType(type_map["Effector"])
+                else:
+                    attr.SetSkeletonType(type_map["LimbNode"])
 
         if not sdk.save_scene(mgr, scene, output_path):
             raise RuntimeError(f"Failed to save conformed animation to: {output_path}")

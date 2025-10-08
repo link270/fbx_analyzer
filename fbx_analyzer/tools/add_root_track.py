@@ -1,59 +1,66 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..core import sdk
 
 
-def _collect_root_info(
-    skel_scene,
-) -> Tuple[str, Optional[str], Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]]]]:
-    """Return (root_joint_name, container_name, container_trs) from the skeleton scene."""
+RestTRS = Tuple[Tuple[float, float, float], Tuple[float, float, float], Tuple[float, float, float]]
 
-    root = skel_scene.GetRootNode()
-    if root is None:
-        raise RuntimeError("Skeleton scene has no root node")
 
-    fbx_module, _ = sdk.import_fbx_module()
-    skeleton_class = getattr(fbx_module, "FbxSkeleton", None)
-    if skeleton_class is None:
-        raise RuntimeError("FbxSkeleton class unavailable in SDK")
+def _collect_root_info(skeleton_path: str) -> Tuple[str, Optional[str], Optional[RestTRS]]:
+    """Return the skeleton root joint name, container name, and container TRS."""
 
-    def is_skeleton(node) -> bool:
-        attr = node.GetNodeAttribute()
-        try:
-            return bool(attr and isinstance(attr, skeleton_class))
-        except Exception:
-            return False
+    mgr = sdk.create_manager()
+    try:
+        sdk.create_io_settings(mgr)
+        scene = sdk.create_scene(mgr)
+        if not sdk.load_scene(mgr, scene, skeleton_path):
+            raise RuntimeError(f"Failed to load skeleton FBX: {skeleton_path}")
 
-    def locate_root(node):
-        for idx in range(node.GetChildCount()):
-            child = node.GetChild(idx)
-            if is_skeleton(child):
-                parent = child.GetParent()
-                if not (parent and is_skeleton(parent)):
-                    return child
-            result = locate_root(child)
-            if result is not None:
-                return result
-        return None
+        fbx_module, _ = sdk.import_fbx_module()
+        skeleton_class = getattr(fbx_module, "FbxSkeleton", None)
+        if skeleton_class is None:
+            raise RuntimeError("FbxSkeleton class unavailable in SDK")
 
-    root_joint = locate_root(root)
-    if root_joint is None:
-        raise RuntimeError("Unable to locate skeleton root joint in skeleton scene")
+        def is_skeleton(node) -> bool:
+            attr = node.GetNodeAttribute()
+            try:
+                return bool(attr and isinstance(attr, skeleton_class))
+            except Exception:
+                return False
 
-    parent = root_joint.GetParent()
-    container_name = None
-    container_trs = None
-    if parent is not None and parent != root:
-        container_name = parent.GetName() or None
-        container_trs = (
-            tuple(parent.LclTranslation.Get()),
-            tuple(parent.LclRotation.Get()),
-            tuple(parent.LclScaling.Get()),
-        )
+        def locate(node):
+            for idx in range(node.GetChildCount()):
+                child = node.GetChild(idx)
+                if is_skeleton(child):
+                    parent = child.GetParent()
+                    if not (parent and is_skeleton(parent)):
+                        return child
+                result = locate(child)
+                if result is not None:
+                    return result
+            return None
 
-    return root_joint.GetName() or "", container_name, container_trs
+        root_node = scene.GetRootNode()
+        skeleton_root = locate(root_node)
+        if skeleton_root is None:
+            raise RuntimeError("Unable to locate skeleton root joint in skeleton scene")
+
+        parent = skeleton_root.GetParent()
+        container_name = None
+        container_trs = None
+        if parent is not None and parent != root_node:
+            container_name = parent.GetName() or None
+            container_trs = (
+                tuple(parent.LclTranslation.Get()),
+                tuple(parent.LclRotation.Get()),
+                tuple(parent.LclScaling.Get()),
+            )
+
+        return skeleton_root.GetName() or "", container_name, container_trs
+    finally:
+        sdk.destroy_manager(mgr)
 
 
 def _find_nodes_by_name(root, name: str) -> List[Any]:  # type: ignore[valid-type]
@@ -74,9 +81,9 @@ def _collect_anim_layers(scene, fbx_module) -> List[Any]:  # type: ignore[name-d
         crit = fbx_module.FbxCriteria.ObjectType(fbx_module.FbxAnimLayer.ClassId)
         count = scene.GetSrcObjectCount(crit)
         for index in range(count or 0):
-            lyr = scene.GetSrcObject(crit, index)
-            if lyr:
-                layers.append(lyr)
+            layer = scene.GetSrcObject(crit, index)
+            if layer:
+                layers.append(layer)
     except Exception:
         pass
     if layers:
@@ -94,9 +101,9 @@ def _collect_anim_layers(scene, fbx_module) -> List[Any]:  # type: ignore[name-d
             except Exception:
                 member_count = 0
             for member_index in range(member_count or 0):
-                lyr = stack.GetMember(member_index)
-                if lyr:
-                    layers.append(lyr)
+                layer = stack.GetMember(member_index)
+                if layer:
+                    layers.append(layer)
     except Exception:
         pass
     return layers
@@ -128,8 +135,12 @@ def _ensure_layer(scene):  # type: ignore[valid-type]
     return layer
 
 
-def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
+def _ensure_trs_keys(node, layer, *, include_scale: bool = True):  # type: ignore[valid-type]
     fbx_module, _ = sdk.import_fbx_module()
+
+    translation = tuple(node.LclTranslation.Get())
+    rotation = tuple(node.LclRotation.Get())
+    scale = tuple(node.LclScaling.Get())
 
     def ensure(prop, component, value):
         try:
@@ -142,9 +153,9 @@ def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
             return
         try:
             curve.KeyModifyBegin()
-            t = fbx_module.FbxTime()
-            t.SetSecondDouble(0.0)
-            index = curve.KeyAdd(t)
+            time = fbx_module.FbxTime()
+            time.SetSecondDouble(0.0)
+            index = curve.KeyAdd(time)
             try:
                 curve.KeySetValue(index, value)
             except Exception:
@@ -157,27 +168,20 @@ def _ensure_identity_curves(node, layer):  # type: ignore[valid-type]
         except Exception:
             pass
 
-    for comp, val in (('X', 0.0), ('Y', 0.0), ('Z', 0.0)):
+    for comp, val in zip(('X', 'Y', 'Z'), translation):
         ensure(node.LclTranslation, comp, val)
+    for comp, val in zip(('X', 'Y', 'Z'), rotation):
         ensure(node.LclRotation, comp, val)
-    for comp, val in (('X', 1.0), ('Y', 1.0), ('Z', 1.0)):
-        ensure(node.LclScaling, comp, val)
+    if include_scale:
+        for comp, val in zip(('X', 'Y', 'Z'), scale):
+            ensure(node.LclScaling, comp, val)
 
 
 def add_missing_root_track(skeleton_path: str, animation_path: str, output_path: str) -> None:
-    """Add an explicit root track to the animation so it matches the skeleton."""
+    """Add a matching root track to the animation so it imports cleanly in UE."""
 
     fbx_module, _ = sdk.import_fbx_module()
-    # Gather skeleton metadata
-    mgr_skel = sdk.create_manager()
-    try:
-        sdk.create_io_settings(mgr_skel)
-        scene_skel = sdk.create_scene(mgr_skel)
-        if not sdk.load_scene(mgr_skel, scene_skel, skeleton_path):
-            raise RuntimeError(f"Failed to load skeleton FBX: {skeleton_path}")
-        root_name, container_name, container_trs = _collect_root_info(scene_skel)
-    finally:
-        sdk.destroy_manager(mgr_skel)
+    root_name, container_name, container_trs = _collect_root_info(skeleton_path)
 
     mgr = sdk.create_manager()
     try:
@@ -186,7 +190,7 @@ def add_missing_root_track(skeleton_path: str, animation_path: str, output_path:
         if not sdk.load_scene(mgr, scene, animation_path):
             raise RuntimeError(f"Failed to load animation FBX: {animation_path}")
 
-        # Align global settings with skeleton
+        # Align global settings with the skeleton
         try:
             mgr2 = sdk.create_manager()
             sdk.create_io_settings(mgr2)
@@ -211,7 +215,6 @@ def add_missing_root_track(skeleton_path: str, animation_path: str, output_path:
         if anim_layer not in layers:
             layers.append(anim_layer)
 
-        # Identify the animated root joint in the scene
         root_matches = _find_nodes_by_name(scene_root, root_name)
         if not root_matches:
             raise RuntimeError(f"Root joint '{root_name}' not found in animation scene")
@@ -234,34 +237,37 @@ def add_missing_root_track(skeleton_path: str, animation_path: str, output_path:
                 except Exception:
                     pass
 
-        # Capture ancestor chain up to the scene root
-        ancestors: List[Any] = []
+        nearest_parent: Optional[Any] = None
+        removal_chain: List[Any] = []
+        top_ancestor: Optional[Any] = None
+
         walker = animated_root
-        while walker is not None and walker is not scene_root:
+        while True:
             parent = walker.GetParent()
             if parent is None:
                 break
-            ancestors.append(parent)
             if parent is scene_root:
+                if walker is not animated_root:
+                    top_ancestor = walker
                 break
+            if nearest_parent is None:
+                nearest_parent = parent
+            removal_chain.append(parent)
             walker = parent
-        top_ancestor = ancestors[-1] if ancestors and ancestors[-1].GetParent() is scene_root else None
 
-        # Prepare or create the container node
         container_node = None
         if container_name:
             container_matches = _find_nodes_by_name(scene_root, container_name)
-            container_node = None
-            for candidate in container_matches:
-                attr = candidate.GetNodeAttribute()
+            preferred = None
+            for node in container_matches:
+                attr = node.GetNodeAttribute()
                 try:
                     if attr and isinstance(attr, fbx_module.FbxNull):
-                        container_node = candidate
+                        preferred = node
                         break
                 except Exception:
                     pass
-            if container_node is None and container_matches:
-                container_node = container_matches[0]
+            container_node = preferred or (container_matches[0] if container_matches else None)
             if container_node is None:
                 container_node = fbx_module.FbxNode.Create(scene, container_name)
                 scene_root.AddChild(container_node)
@@ -282,25 +288,35 @@ def add_missing_root_track(skeleton_path: str, animation_path: str, output_path:
                             parent.RemoveChild(other)
                         except Exception:
                             pass
+
             attr = container_node.GetNodeAttribute()
             if not (attr and isinstance(attr, fbx_module.FbxNull)):
                 container_node.SetNodeAttribute(fbx_module.FbxNull.Create(scene, container_name))
+
             if container_node.GetParent() is not scene_root:
                 try:
                     (container_node.GetParent() or scene_root).RemoveChild(container_node)
                 except Exception:
                     pass
                 scene_root.AddChild(container_node)
+
             if container_trs is not None:
                 container_node.LclTranslation.Set(fbx_module.FbxDouble3(*container_trs[0]))
                 container_node.LclRotation.Set(fbx_module.FbxDouble3(*container_trs[1]))
                 scale_vals = container_trs[2]
-            elif top_ancestor is not None and top_ancestor is not container_node:
+            elif nearest_parent is not None:
+                container_node.LclTranslation.Set(nearest_parent.LclTranslation.Get())
+                container_node.LclRotation.Set(nearest_parent.LclRotation.Get())
+                scale_vals = tuple(nearest_parent.LclScaling.Get())
+            elif top_ancestor is not None:
                 container_node.LclTranslation.Set(top_ancestor.LclTranslation.Get())
                 container_node.LclRotation.Set(top_ancestor.LclRotation.Get())
                 scale_vals = tuple(top_ancestor.LclScaling.Get())
             else:
-                scale_vals = tuple(container_node.LclScaling.Get())
+                container_node.LclTranslation.Set(fbx_module.FbxDouble3(0.0, 0.0, 0.0))
+                container_node.LclRotation.Set(fbx_module.FbxDouble3(0.0, 0.0, 0.0))
+                scale_vals = (1.0, 1.0, 1.0)
+
             scale_vals = tuple(1.0 if abs(v) < 1e-6 else v for v in scale_vals)
             container_node.LclScaling.Set(fbx_module.FbxDouble3(*scale_vals))
         else:
@@ -314,8 +330,24 @@ def add_missing_root_track(skeleton_path: str, animation_path: str, output_path:
                 pass
             target_parent.AddChild(animated_root)
 
-        for ancestor in reversed(ancestors):
-            if ancestor is container_node:
+        removal_nodes: List[Any] = []
+        if top_ancestor is not None and top_ancestor is not container_node:
+            removal_nodes.append(top_ancestor)
+        removal_nodes.extend(removal_chain)
+
+        filtered: List[Any] = []
+        seen: Set[int] = set()
+        for node in removal_nodes:
+            if node is None:
+                continue
+            node_id = id(node)
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            filtered.append(node)
+
+        for ancestor in filtered:
+            if ancestor in (container_node, animated_root, scene_root):
                 continue
             children = [ancestor.GetChild(i) for i in range(ancestor.GetChildCount())]
             for child in children:
@@ -334,8 +366,17 @@ def add_missing_root_track(skeleton_path: str, animation_path: str, output_path:
                     pass
 
         if container_node is not None:
-            _ensure_identity_curves(container_node, anim_layer)
-        _ensure_identity_curves(animated_root, anim_layer)
+            root_matches = _find_nodes_by_name(scene_root, root_name)
+            for candidate in root_matches:
+                if candidate is animated_root:
+                    continue
+                if candidate.GetParent() is scene_root:
+                    try:
+                        scene_root.RemoveChild(candidate)
+                    except Exception:
+                        pass
+            _ensure_trs_keys(container_node, anim_layer)
+        _ensure_trs_keys(animated_root, anim_layer)
 
         if not sdk.save_scene(mgr, scene, output_path):
             raise RuntimeError(f"Failed to save patched animation to: {output_path}")
